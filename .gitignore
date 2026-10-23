@@ -1,0 +1,14 @@
+# Virtual Environment
+.venv/
+bin/
+include/
+lib/
+lib64/
+pyvenv.cfg
+
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+
+# OS files
+.DS_Store
