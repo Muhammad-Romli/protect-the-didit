@@ -46,15 +46,39 @@ menus beyond start/win/lose. Sound is optional and last.
 - **Selecting a tower:** click it to open the upgrade panel (range circle, path A button, path B button, sell button, tower name + current tier).
 - **Targeting:** "first" only (enemy furthest along the path within range).
 - **Sell:** refunds 70% of total money spent on that tower.
-- **Waves:** "Start wave" button. Optional x2 fast-forward toggle.
+- **Waves:** "Start wave" button. Optional x2 fast-forward toggle. Waves alternate with a preparation phase (see below).
 - **Win:** survive wave 10 including the boss. **Lose:** stash HP reaches 0.
+
+## Preparation phase (scope addition, 2026-10-24)
+Game alternates **PREPARATION** and **BATTLE**. Preparation comes before wave 1 and after every cleared wave.
+- **Time keeps moving** in preparation. Passive income (Romli `income_per_sec`) keeps flowing. This is a feature, not a bug.
+- **Escalation:** the longer you wait, the stronger the next wave. Linear ramp from 20s (grace, x1) to 90s: enemy HP up to **x3**, speed up to **+30%**. At 1:30 the wave **starts by force**. Strength is locked in when the wave starts. Bounty and stash damage do not scale. All values live in `data/settings.py` (`PREP_*`).
+- **Activities:** a tower can run one activity at a time, only during preparation; they stop automatically when the wave starts. **Max 3 simultaneous activities** (`MAX_ACTIVITIES`). Romli's activities do **not** count toward the cap (manual, they already take the player's attention). Defined in `data/activities.py`.
+- **Activities** (build order was: prep mechanics -> Zizi -> Jalu -> Romli):
+  - **Zizi** (built; each activity unlocks at **tier 2 of a path**: *Praying* at Recitation (A), *Slothing* at Sin of Sloth (B); because (2,2) is not allowed, one Zizi can only ever unlock one of them): *Slothing* gives **Laziness** stacks (+slow strength, +slow duration), *Praying* gives **Blessing** stacks (+damage, faster attacks). +1 stack every 5s, max 5 each; the activity auto-stops at max. Stacks last for the next battle only (`reset_on_wave_end` in `data/activities.py`). Switching Slothing <-> Praying on the same tower is allowed.
+  - **Jalu** (built): *Larping* gives **+1 ball knowledge per second** (shared pool). Every Jalu upgrade tier costs money AND ball knowledge (10 / 25 / 60 / 120 per tier, `JALU_KNOWLEDGE_COSTS`).
+  - **Romli (postponed until the rest of the game is ready):** farming; trading (read news, guess where prices move); solving code bugs (puzzles) for rewards.
+- Debug: `F2` also gives +100 ball knowledge.
+
+## VFX / SFX (approved 2026-10-24, goal: Bloons TD 6 feel)
+Procedural, no downloads: `game/audio.py` synthesizes 25 sounds at startup (`assets/sfx/<name>.ogg|wav` overrides any of them, see `assets/sfx/README.txt`); `game/vfx.py` has particles, rings, floating text, comic words ("POW!"), screen shake/flash; `game/fx.py` maps game events to both. Game logic only calls `game.fx.<event>()`. `M` mutes. No music yet.
+
+## Money feedback, display, sprites (approved 2026-10-24)
+- All money changes go through `Game.add_money()`. The HUD total counts up/down to the real value and shows a merged `+$N` (green) / `-$N` (red) popup beside it (no flying coins). Wave-clear money (bonus + Romli per-wave income) is one combined popup.
+- Romli's `income_per_sec` is paid as one lump every `INCOME_INTERVAL_SECONDS` (10s) with its own sound, coin burst and a progress bar over the tower. Without upgrades Romli only earns at wave end.
+- Display: 1280x720 logical window, `pygame.SCALED | RESIZABLE`; `F11` / `Alt+Enter` toggles fullscreen; losing window focus pauses. Not verified on a real display yet.
+- Sprites: any missing file falls back to the colored placeholder; names in `assets/sprites/README.txt`.
+- Extra polish: hover/select sounds, danger vignette that grows with enemy strength, ambient motes, tower barrels that aim, shadows, boss aura, ice particles on slowed enemies, stash glow.
+
+## QoL (approved 2026-10-24)
+Pause (`P` or button), hotkeys (`1-3` place, `Space` start wave, `F` speed, `Q`/`W` upgrade path A/B, `X` sell), sell needs a second press within 3s, stats line for the selected tower, discounted prices shown in the upgrade panel.
 
 ## Upgrade system
 - Each tower has **Path A** and **Path B**, each with **4 tiers**.
 - **Rule (BTD6-style, but simplified):** a tower may go up to tier 4 on ONE path, and at most **tier 1 on the other path**.
   - Valid states `(a, b)`: `max(a, b) <= 4` and `min(a, b) <= 1`. Examples: `(4,1)` ok, `(1,1)` ok, `(2,2)` NOT ok.
   - The UI must grey out and show a reason ("Locked: other path is already deep") for blocked upgrades.
-- Cost pattern (tunable): T1 = 100–150, T2 = 250–350, T3 = 600–900, T4 = 1500–2500.
+- Cost pattern (tunable): T1 = 100–150, T2 = 250–350, T3 = 500–550, T4 = 1100–1200 (T3/T4 lowered 2026-10-24 so tier 4 is reachable in a normal run).
 - Each upgrade in `data/towers.py` is a dict with: `name`, `cost`, `description`, `stat_mods` (e.g. `{"damage": +1, "range": +20}`), optional `effects` (list of named special effects, e.g. `["chain_lightning"]`), and `voice_line` (see Jalu).
 - Special effects are implemented as small handler functions registered by name (a dict `EFFECTS = {"chain_lightning": fn}`), so each tower asks "which effects do I have?" and calls them.
 
@@ -71,7 +95,7 @@ All numbers are tunable starting values (in `data/towers.py`).
 
 ### Jalu — BASE TOWER (build and finish this one first)
 - **Concept:** a larper who has never actually watched the movies but constantly talks about them. Sarcastic and funny.
-- **Base:** single-target, reliable. Cost 200, damage 1, cooldown 0.8s, range 150. He just throws things.
+- **Base:** single-target, reliable. Cost 200, damage 2, cooldown 0.8s, range 150. (Base damage doubled 2026-10-24: simulations showed the original 1 was unwinnable by wave 7.) He just throws things.
 - **Path A — "God of Thunder" (Thor-style)**
   1. **Costume & hammer:** wears the costume and holds a hammer. More damage, slightly shorter cooldown.
   2. **Throw it:** throws the hammer / shoots lightning as a projectile. Longer range, pierces 1 enemy.
@@ -90,7 +114,7 @@ All numbers are tunable starting values (in `data/towers.py`).
   - Tier 4: "<plh>."
 
 ### Romli — economy + programmer
-- **Base:** earns a small passive income at the end of every wave (+25 money) and fires a weak "bug" projectile. Cost 250, damage 0.5, cooldown 1.2s, range 130.
+- **Base:** earns a small passive income at the end of every wave (+25 money) and fires a weak "bug" projectile. Cost 250, damage 1, cooldown 1.2s, range 130.
 - **Path A — Farm / Business (income)**
   1. Side hustle: more income per wave.
   2. Small business: income per wave increases again and adds a small income per second.
@@ -107,7 +131,7 @@ All numbers are tunable starting values (in `data/towers.py`).
   - Event timer shows a small progress bar over the tower.
 
 ### Zizi — support / crowd control
-- **Base:** area damage + mild slow, low damage. Cost 300, damage 0.5 (radius 60), cooldown 1.4s, range 120, slows by 15%.
+- **Base:** area damage + mild slow, low damage. Cost 300, damage 1 (radius 60), cooldown 1.4s, range 120, slows by 15%.
 - **Path A — Recitation (buff + small AoE + slow)**
   1. Aura: small AoE damage, slow strength up.
   2. Nearby towers get a buff aura (+10% attack speed).
@@ -169,9 +193,18 @@ protect-the-didit/
 │   ├── projectile.py
 │   ├── wave_manager.py
 │   ├── ui.py            # shop bar, upgrade panel, buttons, HUD, speech bubbles
-│   └── utils.py
+│   ├── utils.py
+│   ├── audio.py         # procedural SFX (assets/sfx overrides)
+│   ├── vfx.py           # particles, rings, floating/comic text, shake, flash
+│   ├── fx.py            # game event -> sound + visuals (Game only calls this)
+│   └── assets.py        # optional sprite loader (assets/sprites)
+├── tests/               # headless checks (python tests/<file>.py)
+├── tools/               # balance_bot.py
+├── HANDOFF.md           # context for a fresh session
+├── CHANGELOG.md
 ├── data/
 │   ├── towers.py
+│   ├── activities.py    # preparation-phase activities
 │   ├── enemies.py
 │   ├── waves.py
 │   ├── map.py
