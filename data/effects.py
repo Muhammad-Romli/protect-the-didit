@@ -8,6 +8,7 @@ EFFECT_PARAMS = {
     "chain_lightning": {"jumps": 3, "range": 100, "falloff": 0.7},
     # Jalu path B
     "time_push": {"chance": 0.20, "distance": 80},
+    "speed_against_time": {"duration": 3.0},  # fast enemies walk at normal speed; refreshed by every hit
     # Zizi path A (auras: strongest source wins, they do not stack)
     "aura_attack_speed_10": {"bonus": 0.10, "radius": 150},
     "aura_attack_speed_20": {"bonus": 0.20, "radius": 150},
@@ -18,4 +19,6 @@ EFFECT_PARAMS = {
     # Romli path A
     "upgrade_discount_aura": {"discount": 0.05, "radius": 150},
     "boss_kill_bonus": {"bonus": 500},
+    # Romli path B
+    "armor_breaker": {"hits": 3},  # one hit counts as this many against armor
 }

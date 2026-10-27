@@ -10,7 +10,20 @@ from game.game import Game, State, Phase
 from data.towers import TOWERS
 from data.activities import activities_for
 
-BUILD = [("jalu",(500,188)),("jalu",(500,324)),("jalu",(800,324)),("zizi",(650,456)),("jalu",(800,188)),("romli",(350,324))]
+BUILD = [('jalu', (500, 324)),
+         ('jalu', (650, 324)),
+         ('zizi', (800, 324)),
+         ('romli', (350, 324)),
+         ('jalu', (950, 324)),
+         ('jalu', (500, 188)),
+         ('zizi', (650, 188)),
+         ('jalu', (800, 188)),
+         ('romli', (350, 188)),
+         ('jalu', (950, 188)),
+         ('jalu', (500, 456)),
+         ('zizi', (650, 456)),
+         ('jalu', (800, 456)),
+         ('jalu', (350, 456))]
 SOLO = [("jalu",(500,188))]   # one Jalu only: wave 1-2 should still be holdable
 def play(prep_start, dmg_mult=1.0, hp_mult=1.0, seed=0, build=None, max_waves=99):
     random.seed(seed)
@@ -18,7 +31,7 @@ def play(prep_start, dmg_mult=1.0, hp_mult=1.0, seed=0, build=None, max_waves=99
     for k, v in TOWERS.items(): v["stats"]["damage"] = saved[k] * dmg_mult
     g = Game(screen); dt = 1/30; queue = list(build or BUILD); log = []
     try:
-        for step in range(30*60*45):
+        for step in range(30*60*70):
             if step % 15 == 0 and g.phase == Phase.PREP:
                 if queue and g.money >= TOWERS[queue[0][0]]["cost"]:
                     k, pos = queue.pop(0); g.placing = k; g._try_place(pos)
@@ -43,6 +56,8 @@ def play(prep_start, dmg_mult=1.0, hp_mult=1.0, seed=0, build=None, max_waves=99
 print("SOLO (1 Jalu) through wave 2:")
 for start in (22, 40):
     r = play(start, build=SOLO, max_waves=2); print(f"  prep>={start}s: {r[0]:7} waves={r[1]:2} stash_lost={100-r[2]:3}")
-print("FULL build:")
-for start in (22, 30, 40, 55, 70):
-    r = play(start); print(f"  prep>={start}s: {r[0]:7} waves={r[1]:2} hp={r[2]:3} lost/wave(cum)={r[3]}")
+import time
+print("FULL build (30 waves):")
+for start in [int(x) for x in (sys.argv[1:] or ["25", "40"])]:
+    t0 = time.time(); r = play(start)
+    print(f"  prep>={start}s: {r[0]:7} waves={r[1]:2} hp={r[2]:3} ({time.time()-t0:.0f}s real) cum-lost/wave={r[3]}")

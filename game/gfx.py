@@ -130,6 +130,16 @@ def sphere(radius: float, color, bounce=(110, 190, 90), shine: float = 1.0) -> p
         pygame.draw.circle(spec, (255, 255, 255, min(255, int(110 * shine))), hp, R * 0.20)
         pygame.draw.circle(spec, (255, 255, 255, min(255, int(220 * shine))), hp, R * 0.10)
         surf.blit(spec, (0, 0))
+    elif name == "clock":
+        pygame.draw.circle(surf, ink, (c, c), S * 0.46)
+        pygame.draw.circle(surf, (255, 255, 255), (c, c), S * 0.40)
+        pygame.draw.line(surf, ink, (c, c), (c, c - S * 0.26), max(2, S // 16))
+        pygame.draw.line(surf, ink, (c, c), (c + S * 0.18, c + S * 0.08), max(2, S // 16))
+    elif name == "moon":
+        pygame.draw.circle(surf, ink, (c, c), S * 0.46)
+        pygame.draw.circle(surf, (255, 236, 150), (c, c), S * 0.40)
+        pygame.draw.circle(surf, ink, (c + S * 0.18, c - S * 0.10), S * 0.34)
+        pygame.draw.circle(surf, (120, 90, 200), (c + S * 0.18, c - S * 0.10), S * 0.30)
     out = downscale(surf)
     _CACHE[key] = out
     return out
@@ -312,3 +322,26 @@ def icon(name: str, size: int) -> pygame.Surface:
     out = downscale(surf)
     _CACHE[key] = out
     return out
+
+
+def hp_bar(surface: pygame.Surface, rect: pygame.Rect, frac: float, ghost: float | None = None, gold: bool = False) -> None:
+    """Health bar: dark rim, colour that shifts green -> yellow -> red, a white 'ghost' segment that
+    shows the damage just taken, glossy highlight and quarter ticks."""
+    frac = max(0.0, min(1.0, frac))
+    r = rect.h // 2
+    pygame.draw.rect(surface, (14, 10, 20), rect.inflate(4, 4), border_radius=r + 2)
+    pygame.draw.rect(surface, (52, 36, 48), rect, border_radius=r)
+    if ghost is not None and ghost > frac:
+        g = rect.copy()
+        g.w = max(rect.h, int(rect.w * min(1.0, ghost)))
+        pygame.draw.rect(surface, (255, 246, 230), g, border_radius=r)
+    if frac > 0:
+        f = rect.copy()
+        f.w = max(rect.h, int(rect.w * frac))
+        col = (255, 190, 70) if gold else (mix((240, 70, 60), (250, 214, 60), frac * 2) if frac < 0.5 else mix((250, 214, 60), (96, 226, 84), (frac - 0.5) * 2))
+        pygame.draw.rect(surface, col, f, border_radius=r)
+        pygame.draw.rect(surface, tint(col, 0.55), (f.x + r // 2, f.y + 1, max(0, f.w - r), max(1, rect.h // 3)), border_radius=max(1, r // 2))
+        pygame.draw.rect(surface, shade(col, 0.6), (f.x + r // 2, f.bottom - max(1, rect.h // 4), max(0, f.w - r), max(1, rect.h // 4)), border_radius=1)
+    for q in (0.25, 0.5, 0.75):
+        x = rect.x + int(rect.w * q)
+        pygame.draw.line(surface, (20, 14, 26), (x, rect.y + 1), (x, rect.bottom - 2), 1)

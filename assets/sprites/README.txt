@@ -2,7 +2,7 @@ Optional sprites. Missing files = the colored placeholder is used.
 PNG or WEBP with transparency. Names (without extension) and what they replace:
 
   towers/jalu  towers/romli  towers/zizi     tower body (drawn ~42 px tall)
-  enemies/normal fast tanky boss trojan trojan_trojan             hamsters (drawn ~30/26/40/64 px tall)
+  enemies/normal fast tanky boss trojan trojan_trojan rich speedster reinforced             hamsters (drawn ~30/26/40/64 px tall)
                                               face RIGHT in the image; the game flips them when walking left
   projectiles/jalu  projectiles/romli  projectiles/zizi   shots (~16 px), pointing RIGHT
   stash                                       the Snack Stash (drawn ~48 px tall)

@@ -11,15 +11,17 @@ import pygame
 from data.activities import ACTIVITIES, STACKS
 from data.effects import BOLT_SECONDS
 from data.map import MAP_CORNER_RADIUS, MAP_WAYPOINTS, STASH_POS
-from data.settings import (BOUNTY_MULT, BOUNTY_WAVE_GROWTH, BUILD_RECT, COLORS, DEBUG_KNOWLEDGE, DEBUG_MONEY, FAST_FORWARD_SPEED,
+from data.settings import (BOUNTY_MULT, BOUNTY_WAVE_GROWTH, BUILD_RECT, COLORS, DEBUG_KNOWLEDGE, DEBUG_MONEY, SPEED_STEPS,
                            INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, PATH_MIN_DISTANCE, PATH_WIDTH, PLAYFIELD_RECT,
                            PREP_GRACE_SECONDS, PREP_MAX_HP_MULT, PREP_MAX_SECONDS,
                            PREP_MAX_SPEED_MULT, SELL_CONFIRM_SECONDS, START_MONEY,
                            START_STASH_HP, TOWER_RADIUS, WAVE_CLEAR_BONUS_BASE,
                            WAVE_CLEAR_BONUS_PER_WAVE)
 from data.towers import TOWER_ORDER, TOWERS
-from data.waves import WAVE_SCALING, WAVES
+from data.waves import NEW_ENEMY_WAVES, SPECIAL_BONUS_MULT, SPECIAL_WAVES, WAVE_SCALING, WAVES
 from data.enemies import ENEMIES
+from data.effects import EFFECT_PARAMS
+from game import actives, bima, options as opts_mod
 from game.effects import EFFECTS
 from game import gfx
 from game.assets import sprite
@@ -59,9 +61,20 @@ class Game:
         self.map_surface = self._render_map()
         self.vignette = self._make_vignette(self.playfield.size)
         self.show_debug = False
+        self.options = opts_mod.load()
+        self.options_open = False
         self.fps = 0.0
         self.mouse_pos = (0, 0)
         self.reset()
+        self.apply_options()
+
+    def apply_options(self) -> None:
+        """Push the option values into audio / vfx (called at start and after every change)."""
+        o = self.options
+        self.fx.audio.master = o["volume"] / 10
+        v = self.fx.vfx
+        v.shake_enabled, v.comics_enabled = o["shake"], o["comics"]
+        v.max_particles = 500 if o["particles"] == "High" else 120
 
     def reset(self) -> None:
         self.fx.reset()
@@ -86,6 +99,15 @@ class Game:
         self.paused = False
         self.larp_tip_shown = False
         self.speed = 1
+        self.auto_timer = 0.0
+        self.time = 0.0                 # simulation clock (seconds)
+        self.delayed: list[list] = []   # [seconds left, callable] one-shot timers (ability wind-ups)
+        self.shots: list = []           # Bima curve shots in flight
+        self.cubes: list = []           # Bima cubes (block the path)
+        self.zones: list = []           # Bima sphere trap zones
+        self.shield, self.shield_t = 0.0, 0.0   # base shield (Bima sphere)
+        self.hitstop, self.last_hitstop = 0.0, -9.0
+        self.aiming = None              # (tower, ability id) while waiting for a map click
         self.message = ""
         self.message_timer = 0.0
 
@@ -118,7 +140,8 @@ class Game:
         stopped = self._stop_all_activities()
         self.waves.start_next()
         boss = any(ENEMIES[kind]["is_boss"] for kind, *_ in WAVES[self.waves.number - 1])
-        self.fx.wave_started(self.waves.number, boss)
+        self.fx.wave_started(self.waves.number, boss, SPECIAL_WAVES.get(self.waves.number),
+                             ENEMIES[NEW_ENEMY_WAVES[self.waves.number]]["name"] if self.waves.number in NEW_ENEMY_WAVES else None)
         if stopped:
             self.flash("Wave started: activities stopped")
 
@@ -197,6 +220,8 @@ class Game:
         elif event.type == pygame.WINDOWFOCUSLOST and self.state == State.PLAYING:
             self.paused = True  # alt-tab pauses
         elif event.type == pygame.KEYDOWN:
+            if self.state == State.PLAYING and self.ui.graph.focused and self.ui.graph.key(event, self):
+                return  # typing a formula: no game hotkeys
             if event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT:
                 self._toggle_fullscreen()
             else:
@@ -206,6 +231,7 @@ class Game:
                 self._on_left_click(event.pos)
             elif event.button == 3:
                 self.placing = None
+                self.aiming = None
 
     def _on_key(self, key: int) -> None:
         if key == pygame.K_r:
@@ -223,8 +249,19 @@ class Game:
         elif self.state != State.PLAYING:
             return
         elif key == pygame.K_ESCAPE:
-            self.placing = None
-            self.selected = None
+            if self.options_open:
+                self.options_open = False
+            elif self.aiming:
+                self.aiming = None
+            elif self.placing or self.selected:
+                self.placing = None
+                self.selected = None
+            else:
+                self.options_open = True
+        elif key == pygame.K_o:
+            self.options_open = not self.options_open
+        elif key == pygame.K_t and self.selected:
+            self._cycle_target(-1 if pygame.key.get_mods() & pygame.KMOD_SHIFT else 1)
         elif key == pygame.K_F3:
             self._skip_wave()
         elif key == pygame.K_p:
@@ -233,8 +270,12 @@ class Game:
             self._start_battle()
         elif key == pygame.K_f:
             self._toggle_speed()
-        elif key in (pygame.K_1, pygame.K_2, pygame.K_3):
+        elif key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4):
             self._choose_shop(TOWER_ORDER[key - pygame.K_1])
+        elif key in (pygame.K_e, pygame.K_c, pygame.K_v) and self.selected:
+            self.use_ability((pygame.K_e, pygame.K_c, pygame.K_v).index(key))
+        elif key == pygame.K_g and self.selected and self.selected.kind == "bima":
+            bima.fire_graph(self, self.selected)
         elif key in (pygame.K_q, pygame.K_w) and self.selected:
             self._try_upgrade(0 if key == pygame.K_q else 1)
         elif key == pygame.K_x and self.selected:
@@ -254,8 +295,33 @@ class Game:
             self.fx.hover()
         self._hover_key = key
 
+    def use_ability(self, index: int) -> None:
+        """Hotkey / button for the selected tower's index-th ability. Aimed abilities wait for a map click."""
+        t = self.selected
+        ids = actives.actives_of(t) if t else []
+        if index >= len(ids):
+            return
+        aid = ids[index]
+        ok, why = actives.can_use(self, t, aid)
+        if not ok:
+            self.fx.invalid()
+            self.flash(why, 1.5)
+        elif actives.ACTIVES[aid]["aim"]:
+            self.aiming = (t, aid)
+            self.placing = None
+            self.flash(f"{actives.ACTIVES[aid]['name']}: click the map  (right-click cancels)", 2.5)
+        else:
+            actives.use(self, t, aid)
+
     def _on_left_click(self, pos) -> None:
         action = self.ui.hit_test(pos, self)
+        if action is None or action[0] != "g_focus":
+            self.ui.graph.focused = False
+        if action is None and self.aiming is not None:
+            tower, aid = self.aiming
+            if actives.use(self, tower, aid, pos):
+                self.aiming = None
+            return
         if action is not None:
             self._do_action(action)
         elif self.placing:
@@ -275,6 +341,31 @@ class Game:
         elif name == "speed":
             self.fx.click()
             self._toggle_speed()
+        elif name == "ability":
+            self.fx.click()
+            self.use_ability(action[1])
+        elif name.startswith("g_") and self.selected is not None:
+            self.fx.click()
+            self.ui.graph.do(action, self)
+        elif name == "options":
+            self.fx.click()
+            self.options_open = not self.options_open
+        elif name == "opt":
+            self.fx.click()
+            if action[1] == "fullscreen":
+                self._toggle_fullscreen()
+            elif action[1] == "restart":
+                self.options_open = False
+                self.reset()
+            elif action[1] == "resume":
+                self.options_open = False
+            else:
+                opts_mod.change(self.options, action[1], action[2])
+                self.apply_options()
+                opts_mod.save(self.options)
+        elif name == "target" and self.selected:
+            self.fx.click()
+            self._cycle_target(action[1])
         elif name == "panel":
             self.fx.click()
             self.ui.collapsed = not self.ui.collapsed
@@ -300,7 +391,14 @@ class Game:
             self.fx.click()
 
     def _toggle_speed(self) -> None:
-        self.speed = 1 if self.speed == FAST_FORWARD_SPEED else FAST_FORWARD_SPEED
+        """Cycle x1 -> x2 -> x3 -> x1."""
+        self.speed = SPEED_STEPS[(SPEED_STEPS.index(self.speed) + 1) % len(SPEED_STEPS)]
+
+    def _cycle_target(self, direction: int) -> None:
+        modes = opts_mod.TARGET_MODES
+        t = self.selected
+        t.targeting = modes[(modes.index(t.targeting) + direction) % len(modes)]
+        self.flash(f"{t.name} targets: {opts_mod.TARGET_LABELS[t.targeting]}", 1.5)
 
     # -------------------------------------------------------------- upgrades
     def upgrade_cost(self, tower: Tower, up: dict) -> int:
@@ -366,6 +464,7 @@ class Game:
             return
         self.add_money(-TOWERS[kind]["cost"])
         tower = Tower(kind, pos)
+        tower.targeting = self.options["default_target"]
         self.towers.append(tower)
         self.fx.placed(tower)
         self.selected = tower
@@ -395,18 +494,26 @@ class Game:
         return values
 
     def damage_multiplier(self, enemy: Enemy) -> float:
-        return max(self.effect_values("damage_taken", enemy=enemy), default=1.0)
+        mult = max(self.effect_values("damage_taken", enemy=enemy), default=1.0)
+        if enemy.vuln_timer > 0:  # Bima's square mark
+            mult *= 1.0 + enemy.vuln
+        return min(mult, 1.6) if enemy.vuln_timer > 0 else mult
 
     def attack_speed_mult(self, tower: Tower) -> float:
         return 1.0 + max(self.effect_values("speed_bonus", other=tower), default=0.0)
 
     def hit_enemy(self, enemy: Enemy, damage: float, slow: float = 0.0,
-                  slow_duration: float = 0.0, color=(255, 240, 180)) -> None:
-        """Single place where tower damage reaches an enemy (applies debuffs + slow)."""
+                  slow_duration: float = 0.0, color=(255, 240, 180), source: Tower | None = None) -> None:
+        """Single place where tower damage reaches an enemy (applies debuffs + slow).
+        Armored enemies only lose armor: 1 per hit, 3 per hit from a tower with armor_breaker."""
         if slow > 0:
             enemy.apply_slow(slow, slow_duration)
+        if enemy.armor > 0:
+            hits = EFFECT_PARAMS["armor_breaker"]["hits"] if source is not None and "armor_breaker" in source.effects else 1
+            self.fx.armor_hit(enemy, enemy.break_armor(hits), hits)
+            return
         enemy.take_damage(damage * self.damage_multiplier(enemy))
-        self.fx.hit(enemy, color)
+        self.fx.hit(enemy, color, source)
 
     def add_bolt(self, a, b) -> None:
         self.bolts.append([Vec(a), Vec(b), BOLT_SECONDS])
@@ -419,22 +526,40 @@ class Game:
         self.sell_timer -= dt
         if self.message_timer <= 0:
             self.message = ""
-        if self.paused:
+        if self.paused or self.options_open:
             return
-        self.fx.update(dt * self.speed)
         if self.state != State.PLAYING:
+            self.fx.update(dt)
             return
-        dt *= self.speed
+        for _ in range(self.speed):  # x2 / x3 run the simulation several times per frame (stays accurate)
+            self._step(dt)
+            if self.state != State.PLAYING:
+                break
 
+    def _step(self, dt: float) -> None:
+        self.fx.update(dt)
+        if self.hitstop > 0:  # brief freeze on big impacts
+            self.hitstop -= dt
+            return
+        self.time += dt
+        for d in self.delayed:
+            d[0] -= dt
+        due = [d for d in self.delayed if d[0] <= 0]
+        self.delayed = [d for d in self.delayed if d[0] > 0]
+        for d in due:
+            d[1]()
+        bima.update_world(self, dt)
         if self.phase == Phase.PREP:
             self.prep_time += dt
             self._tick_activities(dt)
             self._prep_warnings()
-            if self.prep_time >= PREP_MAX_SECONDS:
+            if self.options["auto_start"] and self.waves.can_start and self.prep_time >= self.options["auto_delay"]:
+                self._start_battle()  # auto-start: skips the rest of the preparation
+            elif self.prep_time >= PREP_MAX_SECONDS:
                 self.flash("Time's up! The wave starts now")
                 self._start_battle()
         for kind in self.waves.update(dt):
-            if kind == "boss":
+            if ENEMIES[kind]["is_boss"] or ENEMIES[kind].get("mini"):
                 self.fx.boss_spawned()
             self.spawn_enemy(kind)
         for e in self.enemies:
@@ -512,7 +637,7 @@ class Game:
         if not victims:
             return
         for e in victims:
-            self.hit_enemy(e, p.damage, p.slow, p.slow_duration, p.color)
+            self.hit_enemy(e, p.damage, p.slow, p.slow_duration, p.color, p.source)
         if p.aoe_radius > 0:
             self.fx.aoe(p.pos, p.aoe_radius, p.color)
         self.add_money(p.money_on_hit)
@@ -544,8 +669,17 @@ class Game:
                 if e.is_boss:
                     self.add_money(sum(self.effect_values("boss_kill")))
             elif e.reached_end:
-                self.stash_hp -= e.stash_damage
+                dmg = e.stash_damage
+                if self.shield > 0:  # Bima's sphere shield soaks stash damage first
+                    soak = min(self.shield, dmg)
+                    self.shield -= soak
+                    dmg -= soak
+                self.stash_hp -= dmg
                 self.fx.leaked(e, STASH_POS)
+                if e.steal and self.money > 0:  # Rich Didit runs off with your money
+                    stolen = min(int(self.money), e.steal)
+                    self.add_money(-stolen)
+                    self.fx.stolen(e, stolen)
             else:
                 remaining.append(e)
         self.enemies = remaining + born
@@ -562,6 +696,8 @@ class Game:
         for t in self.towers:
             t.clear_wave_stacks()
         bonus = WAVE_CLEAR_BONUS_BASE + WAVE_CLEAR_BONUS_PER_WAVE * self.waves.number
+        if self.waves.number in SPECIAL_WAVES:
+            bonus = round(bonus * SPECIAL_BONUS_MULT)  # special rounds pay double
         total = bonus
         for t in self.towers:  # Romli's per-wave income
             if t.stats["income_per_wave"] > 0:
@@ -621,9 +757,13 @@ class Game:
                 o.draw(w)
         for p in self.projectiles:
             p.draw(w)
+        bima.draw_world(w, self)
+        if self.selected is not None and self.selected.kind == "bima":
+            bima.draw_preview(w, self.selected)
         self._draw_bolts(w)
         self.fx.vfx.draw(w)
         self._draw_placement_preview(w)
+        self._draw_aiming(w)
         s.fill(COLORS["grass"])
         s.blit(w, self.fx.vfx.shake_offset())  # whole playfield shakes, UI stays still
         self.fx.vfx.draw_overlay(s, self.playfield)
@@ -631,6 +771,8 @@ class Game:
         self.ui.draw(s, self)
         if self.show_debug:
             self._draw_debug()
+        elif self.options["fps"]:
+            draw_outlined(self.screen, f"FPS {self.fps:.0f}", (1270, 620), 18, (255, 255, 120), anchor="bottomright", width=1)
         if self.paused and self.state == State.PLAYING:
             self._draw_banner_panel("PAUSED", "P or the pause button to resume", COLORS["gold"])
         if self.state != State.PLAYING:
@@ -644,7 +786,7 @@ class Game:
 
     def _draw_vignette(self, screen: pygame.Surface) -> None:
         level = self.danger_level()
-        if level <= 0:
+        if level <= 0 or not self.options["vignette"]:
             return
         pulse = 0.75 + 0.25 * math.sin(pygame.time.get_ticks() / 220)
         self.vignette.set_alpha(int(150 * level * pulse))
@@ -671,6 +813,25 @@ class Game:
         img.set_alpha(190 if ok else 120)
         surface.blit(img, (x - ox, y - oy))
         pygame.draw.ellipse(surface, color, (x - 30, y - 14, 60, 30), 3)
+
+    def _draw_aiming(self, surface: pygame.Surface) -> None:
+        """Preview while an aimed ability waits for a click."""
+        if self.aiming is None:
+            return
+        tower, aid = self.aiming
+        cfg = actives.ACTIVES[aid]
+        pos = Vec(self.mouse_pos)
+        if self.ui.hit_test(self.mouse_pos, self) is not None:
+            return
+        radius = {"thunderstrike_active": cfg.get("radius", 95), "sphere_active": 90}.get(aid, 28)
+        if aid == "cube_active":
+            d, off = bima.nearest_path_distance(self.path, pos)
+            snapped = self.path.position_at(d)
+            ok = off <= 48 and snapped.distance_to(tower.pos) <= 280
+            draw_range_circle(surface, tower.pos, 280, (255, 255, 255))
+            pygame.draw.circle(surface, COLORS["good"] if ok else COLORS["bad"], (int(snapped.x), int(snapped.y)), 26, 3)
+            return
+        draw_range_circle(surface, pos, radius, cfg["color"])
 
     def _draw_debug(self) -> None:
         lines = [f"FPS {self.fps:.0f}", f"enemies {len(self.enemies)}",

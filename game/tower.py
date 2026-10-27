@@ -13,7 +13,7 @@ from data.towers import DEFAULT_STATS, TOWERS
 from game.effects import EFFECTS
 from game.enemy import Enemy
 from game.projectile import Projectile
-from game import gfx, sprites_proc
+from game import bima, gfx, sprites_proc
 from game.assets import sprite
 from game.utils import Vec, draw_outlined
 
@@ -31,6 +31,7 @@ class Tower:
         self.tiers = [0, 0]                  # (path A tier, path B tier)
         self.spent: int = self.data["cost"]  # total money spent (for sell value)
         self.cooldown_left = 0.0
+        self.targeting = "first"  # priority: first | last | strong | weak | close
         self.kick = 0.0  # visual recoil timer after firing
         self.aim = Vec(0, -1)  # visual: where the barrel points
         self.income_timer = 0.0  # seconds toward the next income payout
@@ -40,7 +41,12 @@ class Tower:
         self.stacks: dict[str, int] = {}     # activity stacks (laziness, blessing, ...)
         self.stats: dict[str, float] = {}
         self.effects: list[str] = []
+        self.active_cd: dict[str, float] = {}   # ability id -> seconds until ready
+        self.haste = (0.0, 0.0)                 # (seconds left, attack speed bonus) from random events
+        self.fx_t = 0.0                         # ambient sparkle timer
         self.recompute_stats()
+        if kind == "bima":
+            bima.init_tower(self)
 
     # ---------------------------------------------------------------- stats
     def recompute_stats(self) -> None:
@@ -92,8 +98,8 @@ class Tower:
             return False, "Max tier"
         new = list(self.tiers)
         new[path] += 1
-        if min(new) > MAX_OFF_PATH_TIER:
-            return False, "Locked: other path is already deep"
+        if min(new) > (0 if self.kind == "bima" else MAX_OFF_PATH_TIER):  # Bima: ONE path only
+            return False, "Locked: Bima uses ONE path" if self.kind == "bima" else "Locked: other path is already deep"
         return True, ""
 
     def upgrade(self, path: int, paid: int | None = None) -> None:
@@ -118,18 +124,44 @@ class Tower:
 
     # --------------------------------------------------------------- update
     def pick_target(self, enemies: list[Enemy]) -> Optional[Enemy]:
-        """'First' targeting: enemy furthest along the path within range."""
-        best: Optional[Enemy] = None
+        """Best enemy in range for this tower's priority: first / last (path position),
+        strong / weak (current HP), close (distance to the tower)."""
         rng = self.stats["range"]
-        for e in enemies:
-            if e.alive and self.pos.distance_to(e.pos) <= rng + e.radius:
-                if best is None or e.distance > best.distance:
-                    best = e
-        return best
+        cands = [e for e in enemies if e.alive and self.pos.distance_to(e.pos) <= rng + e.radius]
+        if not cands:
+            return None
+        mode = self.targeting
+        if mode == "last":
+            return min(cands, key=lambda e: e.distance)
+        if mode == "strong":
+            return max(cands, key=lambda e: (e.hp + e.armor * 1000, e.distance))
+        if mode == "weak":
+            return min(cands, key=lambda e: (e.hp + e.armor * 1000, -e.distance))
+        if mode == "close":
+            return min(cands, key=lambda e: self.pos.distance_to(e.pos))
+        return max(cands, key=lambda e: e.distance)
 
     def update(self, dt: float, game: "Game") -> None:
         self.kick = max(0.0, self.kick - dt)
+        for aid in list(self.active_cd):
+            self.active_cd[aid] = max(0.0, self.active_cd[aid] - dt)
+        if self.haste[0] > 0:
+            self.haste = (self.haste[0] - dt, self.haste[1])
+        for name in self.effects:  # per-frame effect hooks (e.g. Romli's random events)
+            fn = EFFECTS.get(name)
+            if fn is not None:
+                fn(self, game, "tick", dt=dt)
+        self.fx_t += dt
+        if self.fx_t > 0.2:
+            self.fx_t = 0.0
+            game.fx.aura(self)
+        if self.kind == "bima":
+            bima.tick_tower(self, game, dt)
         rate = game.attack_speed_mult(self)  # Zizi auras
+        if self.haste[0] > 0:
+            rate += self.haste[1]
+        if self.kind == "bima" and self.buff_timer > 0:
+            rate += 0.6
         self.cooldown_left = max(0.0, self.cooldown_left - dt * rate)
         if self.cooldown_left > 0:
             return
@@ -137,9 +169,11 @@ class Tower:
         if target is None:
             return
         s = self.stats
-        game.projectiles.append(Projectile(
-            self.pos, target, s["proj_speed"], s["damage"], s["aoe_radius"],
-            s["slow"], s["slow_duration"], s["money_per_hit"], self.color, self))
+        proj = Projectile(self.pos, target, s["proj_speed"], s["damage"], s["aoe_radius"],
+                          s["slow"], s["slow_duration"], s["money_per_hit"], self.color, self)
+        if self.kind == "bima":
+            bima.prepare_projectile(self, game, target, proj)
+        game.projectiles.append(proj)
         self.cooldown_left = s["cooldown"]
         self.kick = 0.1
         game.fx.fired(self)
@@ -154,6 +188,13 @@ class Tower:
         if selected:  # pulsing ring on the ground under the pedestal
             pulse = 2 * math.sin(pygame.time.get_ticks() / 160)
             pygame.draw.ellipse(surface, (255, 255, 255), (x - 28 - pulse, y - 12 - pulse / 2, 56 + 2 * pulse, 28 + pulse), 3)
+        n_tiers = self.tiers[0] + self.tiers[1]
+        if n_tiers:  # tier glow on the ground: bigger and brighter with every upgrade
+            col = (255, 214, 70) if self.tiers[0] >= self.tiers[1] else (110, 215, 255)
+            if self.kind == "bima" and bima.buff_active(self):
+                col = (255, 225, 90)
+            g = gfx.glow(30 + 5 * n_tiers, col, 60 + 14 * n_tiers)
+            surface.blit(g, g.get_rect(center=(x, y + 4)))
         img = sprite(f"towers/{self.kind}", 2 * TOWER_RADIUS + 10)  # optional PNG override
         custom = img is not None
         if not custom:

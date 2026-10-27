@@ -37,7 +37,7 @@ MAX_SLOW = 0.9
 SLOW_FLOOR = 0.2        # enemies never go below 20% of base speed
 BOSS_SLOW_FACTOR = 0.5  # bosses take half the slow effect
 
-FAST_FORWARD_SPEED = 2
+SPEED_STEPS = (1, 2, 3)  # game speed button / F key cycles through these
 
 # Preparation phase: time keeps moving; the longer you wait, the stronger the next wave.
 # Ramp is linear from GRACE (x1) to MAX (full multipliers), then the wave starts by force.

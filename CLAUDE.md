@@ -101,10 +101,10 @@ All numbers are tunable starting values (in `data/towers.py`).
   2. **Throw it:** throws the hammer / shoots lightning as a projectile. Longer range, pierces 1 enemy.
   3. **Real power:** chain lightning that jumps to nearby enemies. Strong damage boost.
   4. **Active skill + overall boost:** "Thunderstrike" active ability (button, ~30s cooldown): heavy AoE damage at a chosen point. Also stronger basic attacks.
-- **Path B — "Time Loom Guy" (Loki-style)**
+- **Path B — "Temporal Loom Guy" (Loki-style)**
   1. **Costume & scepter:** wears the costume and holds a scepter. Small damage + range boost.
   2. **Magic bolts:** shoots magic bolts that apply a short slow.
-  3. **Real power:** the Time Loom: hits have a chance to push the enemy backwards along the path (reduce its `distance_travelled` by a fixed amount). Does not work on bosses.
+  3. **Real power:** the Temporal Loom (also *Speed Against Time*: hit fast enemies walk at normal speed for 3s): hits have a chance to push the enemy backwards along the path (reduce its `distance_travelled` by a fixed amount). Does not work on bosses.
   4. **Active skill + overall boost:** "Loom Reset" active ability (~35s cooldown): all enemies in range are pushed back and frozen for 2s. Also stronger basic attacks.
 - **Personality (voice lines):** a short speech bubble above Jalu appears on place, on each upgrade, and occasionally when shooting (max once per ~10s). He is sarcastic, overconfident, and gets movie references wrong. Keep lines in `data/dialogue.py`, 3–5 per upgrade/event, picked randomly. Example tone (rewrite freely):
   - Placed: "<plh>."
@@ -122,7 +122,7 @@ All numbers are tunable starting values (in `data/towers.py`).
   4. Empire: very large income per wave + extra bonus on boss kill.
 - **Path B — Programmer (attack that converts to money)**
   1. Decoder: attacks give a small money bonus per hit.
-  2. Better code: faster attacks, and more money per hit.
+  2. Better code: faster attacks, and more money per hit. Armor breaker: 1 hit counts as 3 against armor.
   3. **Random event every 20s** (equal 33% chance each): (a) +10% of current money, (b) all friendly towers in range get **attack speed x9.99 for 2s**, (c) "bug" — spawns a few enemies appropriate for the current wave.
   4. Same event system but stronger: boost lasts longer, money bonus larger, and the "bug" outcome spawns fewer enemies than before. Plus higher base damage.
 - **Notes / balance guards (important):**
@@ -251,3 +251,17 @@ Each milestone must be runnable before moving on. Jalu is built first and fully.
 - Enemies now also: `trojan` (28 HP, releases 5 normal) and `trojan_trojan` (boss, 350 HP, releases 3 trojan). Waves/scaling/bounties live in `data/waves.py` and `data/settings.py` (`BOUNTY_*`).
 - UI follows the BTD6 layout (see game/ui.py docstring). Visual helpers: `game/gfx.py`, `game/scenery.py`, `game/sprites_proc.py`. Single light from the top-left; shadows fall bottom-right.
 - Not done on purpose: the BTD6 orange ability button (active skills are still unimplemented); the orange button is speed.
+
+
+## Update 2026-10-25 (second batch)
+- 30 waves, specials 7/17/25, enemy intros 6/8/10/13/17/22 (see data/waves.py header). Enemy fields: fast, mini, armor, steal, decel, spawns (data/enemies.py).
+- Effects added: speed_against_time, armor_breaker (marker checked in Game.hit_enemy). Armored enemies only lose armor until it is 0.
+- Options live in game/options.py (+ options.json), targeting in Tower.pick_target. Speed steps in settings.SPEED_STEPS.
+- Interpretation note: "wave skip" = skip the preparation (START); "auto wave skip" = Auto-start option.
+
+
+## Update 2026-10-25 (third batch): Bima, actives, visuals
+- Bima lives in game/bima.py (+ formula.py, curves.py, bima_ui.py, actives.py), numbers in data/bima.py. One path only. Enemy fields added: shape_mask, vuln, blocked (cube), trap_immune, bubble.
+- Active skills: game/actives.py (ACTIVES table). Cooldowns in Tower.active_cd, aimed skills use Game.aiming, delayed effects use Game.delayed.
+- Health bars: gfx.hp_bar. Reinforced armor stage: Enemy.armor_stage (2 full, 1 damaged, 0 none).
+- Browser port: see PYGBAG_HANDOFF.md (not done yet).

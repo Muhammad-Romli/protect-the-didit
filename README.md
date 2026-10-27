@@ -47,3 +47,7 @@ Not done yet (data exists, behaviour doesn't): every named `effects` entry (pier
 time push, auras, random events, sleep, debuff, active skills), fusion, Jalu speech bubbles
 (`data/dialogue.py` is placeholders), sprites, sound, start screen. The upgrade panel marks tiers
 whose special effect is not implemented yet.
+
+- Extra keys: F cycles speed x1/x2/x3, T / Shift+T changes the selected tower's target priority, O or Esc opens Options (auto-start waves, volume, ...).
+
+- Bima (key 4): Graph path needs typing a formula (click the box, Enter fires, G repeats); Geometry path auto-attacks with shapes. Abilities E/C/V.

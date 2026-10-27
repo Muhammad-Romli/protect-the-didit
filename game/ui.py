@@ -21,8 +21,10 @@ from data.activities import ACTIVITIES, STACKS, activities_for
 from data.settings import (BAR_RECT, COLORS, INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, MAX_TIER, PREP_GRACE_SECONDS,
                            PREP_MAX_SECONDS, TOWER_RADIUS)
 from data.towers import DEFAULT_STATS, TOWER_ORDER, TOWERS
-from data.waves import WAVES
-from game import gfx, sprites_proc
+from data.waves import SPECIAL_WAVES, WAVES
+from game import gfx, options as opts_mod, sprites_proc
+from game.actives import ACTIVES, actives_of
+from game.bima_ui import GraphConsole
 from game.utils import draw_outlined, outlined_text, wrap_text
 
 if TYPE_CHECKING:
@@ -37,6 +39,7 @@ POPUP_MERGE_SECONDS = 0.3   # gains inside this window become one "+$N"
 COUNT_UP_SPEED = 9.0        # how fast the shown total catches up with the real one
 PANEL_W = 300
 CARD_W, CARD_H = 94, 78
+CARD_UP_H = 132             # upgrade card height in the tower panel
 SLIDE_SPEED = 7.0           # panel slide-in, 1/seconds
 
 
@@ -45,17 +48,23 @@ class UI:
         self.bar = pygame.Rect(*BAR_RECT)
         self.upgrades_btn = pygame.Rect(18, 640, 214, 44)
         self.slot = pygame.Rect(18, 690, 214, 22)
-        x0 = 640 - (3 * CARD_W + 2 * 14) // 2
+        n = len(TOWER_ORDER)
+        x0 = 640 - (n * CARD_W + (n - 1) * 14) // 2
         self.shop_btns = {k: pygame.Rect(x0 + i * (CARD_W + 14), 641, CARD_W, CARD_H)
                           for i, k in enumerate(TOWER_ORDER)}
         self.speed_btn = pygame.Rect(1048, 644, 84, 66)
         self.start_btn = pygame.Rect(1142, 644, 126, 66)
         self.gear_btn = pygame.Rect(1214, 10, 58, 58)
         # upgrade panel (geometry is rebuilt by layout() for the selected tower)
+        self.graph = GraphConsole()
+        self.ability_rects: list[tuple[str, pygame.Rect]] = []
         self.panel = pygame.Rect(0, 0, 0, 0)
         self.upgrade_btns = [pygame.Rect(0, 0, 0, 0), pygame.Rect(0, 0, 0, 0)]
         self.sell_btn = pygame.Rect(0, 0, 0, 0)
         self._act_rects: list[tuple[str, pygame.Rect]] = []
+        self.target_rects = (pygame.Rect(0, 0, 0, 0), pygame.Rect(0, 0, 0, 0))  # prev / next priority
+        self.opt_panel = pygame.Rect(380, 70, 520, 556)
+        self.opt_rows: list[tuple[str, pygame.Rect]] = []
         self.panel_open = False      # target of the slide animation (tower selected and not collapsed)
         self.collapsed = False       # the UPGRADES button hides the panel
         self.slide = 0.0             # 0 = off-screen, 1 = fully in
@@ -106,7 +115,10 @@ class UI:
     def layout(self, game: "Game") -> None:
         """Rebuild the panel rectangles for the selected tower (every frame and before hit tests)."""
         t = game.selected
+        self.ability_rects = [] if t is None else [(a, pygame.Rect(244 + i * 60, 642, 56, 68)) for i, a in enumerate(actives_of(t)[:3])]
         if t is not self._last_selected:
+            self.graph.focused = False
+            self.graph.pattern_open = False
             self._last_selected = t
             self.collapsed = False
             if t is not None:
@@ -117,21 +129,35 @@ class UI:
         if t is None:
             return
         acts = activities_for(t.kind)
-        h = 18 + 52 + 6 + 36 + 8 + (54 if acts else 0) + 2 * 150 + 8 + 10 + 38 + 18
+        h = 18 + 52 + 6 + 36 + 4 + 34 + 8 + (54 if acts else 0) + 2 * CARD_UP_H + 8 + 10 + 38 + 18
         ease = 1 - (1 - self.slide) ** 3
         home = 14 if self.panel_side == "left" else 1280 - PANEL_W - 14
         off = -(PANEL_W + 40) if self.panel_side == "left" else (PANEL_W + 40)
         self.panel = pygame.Rect(round(home + off * (1 - ease)), 76, PANEL_W, h)
-        x, y = self.panel.x + 20, self.panel.y + 18 + 52 + 6 + 36 + 8
-        w = PANEL_W - 40
+        x, w = self.panel.x + 20, PANEL_W - 40
+        ty = self.panel.y + 18 + 52 + 6 + 36 + 4
+        self.target_rects = (pygame.Rect(x, ty, 34, 30), pygame.Rect(x + w - 34, ty, 34, 30))
+        y = ty + 34 + 8
         self._act_rects = []
         if acts:
             gap = 6
             aw = (w - gap * (len(acts) - 1)) // len(acts)
             self._act_rects = [(a, pygame.Rect(x + i * (aw + gap), y, aw, 46)) for i, (a, _) in enumerate(acts)]
             y += 54
-        self.upgrade_btns = [pygame.Rect(x, y, w, 150), pygame.Rect(x, y + 158, w, 150)]
-        self.sell_btn = pygame.Rect(x, y + 318, w, 38)
+        self.upgrade_btns = [pygame.Rect(x, y, w, CARD_UP_H), pygame.Rect(x, y + CARD_UP_H + 8, w, CARD_UP_H)]
+        self.sell_btn = pygame.Rect(x, y + 2 * CARD_UP_H + 18, w, 38)
+
+    def _build_options_layout(self) -> None:
+        p = self.opt_panel
+        self.opt_rows = []
+        y = p.y + 76
+        for key, *_ in opts_mod.ROWS:
+            self.opt_rows.append((key, pygame.Rect(p.x + 24, y, p.w - 48, 34)))
+            y += 38
+        y += 6
+        bw = (p.w - 48 - 20) // 3
+        for i, key in enumerate(("fullscreen", "restart", "resume")):
+            self.opt_rows.append((key, pygame.Rect(p.x + 24 + i * (bw + 10), y, bw, 44)))
 
     def activity_rects(self, tower_kind: str) -> list[tuple[str, pygame.Rect]]:
         """One button per activity the selected tower can run (valid after layout())."""
@@ -141,8 +167,22 @@ class UI:
     def hit_test(self, pos, game: "Game"):
         self.layout(game)
         if self.gear_btn.collidepoint(pos):
-            return ("pause",)
-        for kind, rect in self.shop_btns.items():
+            return ("options",)
+        if game.options_open:
+            self._build_options_layout()
+            for key, rect in self.opt_rows:
+                if rect.collidepoint(pos):
+                    if key in ("fullscreen", "restart", "resume"):
+                        return ("opt", key, 0)
+                    return ("opt", key, -1 if pos[0] < rect.centerx - 10 and key != "auto_start" else 1)
+            return ("noop",)
+        g = self.graph.hit_test(pos, game)
+        if g is not None:
+            return g
+        for i, (aid, rect) in enumerate(self.ability_rects):
+            if rect.collidepoint(pos):
+                return ("ability", i)
+        for kind, rect in (() if self.graph.visible(game) else self.shop_btns.items()):
             if rect.collidepoint(pos):
                 return ("shop", kind)
         if self.start_btn.collidepoint(pos):
@@ -152,6 +192,9 @@ class UI:
         if self.upgrades_btn.collidepoint(pos):
             return ("panel",)
         if game.selected is not None and (self.panel_open or self.slide > 0.02):
+            for i, rect in enumerate(self.target_rects):
+                if rect.collidepoint(pos):
+                    return ("target", -1 if i == 0 else 1)
             for act_id, rect in self._act_rects:
                 if rect.collidepoint(pos):
                     return ("activity", act_id)
@@ -177,6 +220,8 @@ class UI:
         self._draw_bar(surface, game)
         self._draw_toast(surface, game)
         self._draw_tooltip(surface, game)
+        if game.options_open:
+            self._draw_options(surface, game)
 
     def _btn(self, surface, rect, base, game, enabled=True, radius=12, border=(255, 255, 255), pressed=False):
         hover = enabled and rect.collidepoint(game.mouse_pos)
@@ -218,8 +263,8 @@ class UI:
         n = min(total, game.waves.number if game.waves.active else game.waves.number + 1)
         draw_outlined(surface, "ROUND", (1204, 8), 20, (255, 255, 255), anchor="topright")
         draw_outlined(surface, f"{n}/{total}", (1204, 24), 40, (255, 255, 255), anchor="topright", width=3)
-        self._btn(surface, self.gear_btn, COLORS["btn_blue"], game, pressed=game.paused)
-        surface.blit(gfx.icon("play" if game.paused else "pause", 36), (self.gear_btn.x + 11, self.gear_btn.y + 10))
+        self._btn(surface, self.gear_btn, COLORS["btn_blue"], game, pressed=game.options_open)
+        surface.blit(gfx.icon("gear", 38), (self.gear_btn.x + 10, self.gear_btn.y + 9))
 
     def _draw_banner(self, surface, game: "Game") -> None:
         """Top-centre: phase, timer and how strong the wave is."""
@@ -230,31 +275,37 @@ class UI:
         strength = f"x{hp_mult:.1f} HP  +{round((speed_mult - 1) * 100)}% speed"
         if game.phase.value == "battle":
             left = len(game.enemies) + len(game.waves._queue)
-            draw_outlined(surface, f"WAVE {game.waves.number}  -  {left} left", (rect.centerx, rect.y + 17), 26,
-                          COLORS["bad"], center=True)
+            special = SPECIAL_WAVES.get(game.waves.number)
+            head = f"WAVE {game.waves.number}  {special}  -  {left} left" if special else f"WAVE {game.waves.number}  -  {left} left"
+            draw_outlined(surface, head, (rect.centerx, rect.y + 17), 24 if special else 26,
+                          (120, 220, 255) if special else COLORS["bad"], center=True)
             draw_outlined(surface, f"Wait penalty: {strength}", (rect.centerx, rect.y + 42), 17,
                           COLORS["text_dim"], center=True, width=1)
         else:
             t = int(game.prep_time)
             mx = PREP_MAX_SECONDS
-            draw_outlined(surface, f"PREPARATION  {t // 60}:{t % 60:02d} / {mx // 60}:{mx % 60:02d}",
-                          (rect.centerx, rect.y + 17), 24, GOLD, center=True)
+            nxt = SPECIAL_WAVES.get(game.waves.number + 1)
+            title = f"PREP  {t // 60}:{t % 60:02d} / {mx // 60}:{mx % 60:02d}" + (f"  -  next: {nxt}!" if nxt else "")
+            draw_outlined(surface, title, (rect.centerx, rect.y + 17), 24 if not nxt else 21, GOLD, center=True)
             draw_outlined(surface, f"Next wave: {strength}", (rect.centerx, rect.y + 42), 17,
                           COLORS["bad"] if game.prep_ramp() > 0 else COLORS["text_dim"], center=True, width=1)
 
     def _draw_boss_bars(self, surface, game: "Game") -> None:
-        y = 76
-        for boss in [e for e in game.enemies if e.is_boss][:2]:
-            bar = pygame.Rect(640 - 260, y, 520, 24)
-            pygame.draw.rect(surface, (30, 14, 14), bar.inflate(8, 8), border_radius=14)
-            pygame.draw.rect(surface, COLORS["hp_bg"], bar, border_radius=11)
-            fill = bar.copy()
-            fill.w = max(6, int(bar.w * max(0.0, boss.hp) / boss.max_hp))
-            pygame.draw.rect(surface, (230, 64, 64), fill, border_radius=11)
-            pygame.draw.rect(surface, (255, 150, 140), (fill.x + 4, fill.y + 3, max(0, fill.w - 8), 5), border_radius=3)
-            pygame.draw.rect(surface, (255, 255, 255), bar, 2, border_radius=11)
-            draw_outlined(surface, boss.name.upper(), bar.center, 20, center=True, width=2)
-            y += 38
+        """Top-centre boss bars: name plate, segmented health bar with a damage 'ghost', percentage."""
+        y = 78
+        for boss in sorted([e for e in game.enemies if e.is_boss], key=lambda e: -e.max_hp)[:2]:
+            bar = pygame.Rect(640 - 230, y + 20, 460, 18)
+            gfx.hp_bar(surface, bar, boss.hp / boss.max_hp, boss.hp_ghost / boss.max_hp)
+            plate = pygame.Rect(0, 0, 250, 26)
+            plate.midbottom = (bar.centerx, bar.y + 2)
+            pygame.draw.rect(surface, (20, 12, 28), plate, border_radius=13)
+            pygame.draw.rect(surface, (255, 120, 100), plate, 2, border_radius=13)
+            draw_outlined(surface, boss.name.upper(), plate.center, 18, (255, 235, 220), center=True, width=2)
+            draw_outlined(surface, f"{max(0, round(100 * boss.hp / boss.max_hp))}%", (bar.right + 10, bar.centery), 18,
+                          (255, 255, 255), anchor="midleft", width=2)
+            for sx in (bar.x - 8, bar.right + 8 - 0):
+                pygame.draw.circle(surface, (255, 120, 100), (sx, bar.centery), 5)
+            y += 52
 
     # ------------------------------------------------------------ bottom bar
     def _draw_bar(self, surface, game: "Game") -> None:
@@ -269,9 +320,13 @@ class UI:
         d = 1 if shown else -1  # arrow points down while the panel is open
         pygame.draw.polygon(surface, col, [(cx - 9, cy - 4 * d), (cx + 9, cy - 4 * d), (cx, cy + 5 * d)])
         self._draw_slot(surface, game)
-        for i, (kind, rect) in enumerate(self.shop_btns.items()):
-            self._draw_card(surface, game, kind, rect, i + 1)
-        fast = game.speed > 1  # orange: speed, green: start the wave
+        if self.graph.visible(game):
+            self.graph.draw(surface, game)
+        else:
+            for i, (kind, rect) in enumerate(self.shop_btns.items()):
+                self._draw_card(surface, game, kind, rect, i + 1)
+        self._draw_abilities(surface, game)
+        fast = game.speed > 1  # orange: speed (x1/x2/x3), green: start / skip the preparation
         self._btn(surface, self.speed_btn, COLORS["btn_orange"], game, pressed=fast)
         surface.blit(gfx.icon("ff", 34), (self.speed_btn.x + 25, self.speed_btn.y + 5))
         draw_outlined(surface, f"x{game.speed}", (self.speed_btn.centerx, self.speed_btn.bottom - 15), 22, center=True)
@@ -281,7 +336,7 @@ class UI:
         if game.waves.active:
             label, sub = "RUNNING", None
         elif can:
-            label, sub = "START", f"wave {game.waves.number + 1}"
+            label, sub = "START", f"skip prep"
         else:
             label, sub = "DONE", None
         cx = self.start_btn.x + 82
@@ -289,6 +344,38 @@ class UI:
                       (255, 255, 255) if can else (205, 208, 218), center=True)
         if sub:
             draw_outlined(surface, sub, (cx, self.start_btn.centery + 14), 17, (255, 255, 255), center=True, width=1)
+
+    def _draw_abilities(self, surface, game: "Game") -> None:
+        t = game.selected
+        for i, (aid, rect) in enumerate(self.ability_rects):
+            cfg = ACTIVES[aid]
+            cd = t.active_cd.get(aid, 0.0)
+            live = game.phase.value == "battle" and cd <= 0
+            self._btn(surface, rect, cfg["color"], game, live, 10, pressed=game.aiming is not None and game.aiming[1] == aid)
+            icon = cfg["icon"]
+            if icon in ("cube", "pyramid", "sphere"):
+                img = sprites_proc.shape_sprite(("cube", "pyramid", "sphere").index(icon) if icon != "cube" else 0, True, 34)
+                if icon == "pyramid":
+                    img = sprites_proc.shape_sprite(1, True, 34)
+                elif icon == "sphere":
+                    img = sprites_proc.shape_sprite(2, True, 34)
+            else:
+                img = gfx.icon(icon, 30)
+            surface.blit(img, img.get_rect(center=(rect.centerx, rect.y + 24)))
+            draw_outlined(surface, cfg["name"], (rect.centerx, rect.bottom - 14), 13, (255, 255, 255), center=True, width=1)
+            if cd > 0:
+                h = int(rect.h * cd / cfg["cooldown"])
+                shade_ = pygame.Surface((rect.w - 4, h), pygame.SRCALPHA)
+                shade_.fill((10, 8, 20, 150))
+                surface.blit(shade_, (rect.x + 2, rect.y + 2))
+                draw_outlined(surface, f"{cd:.0f}", (rect.centerx, rect.y + 24), 24, center=True, width=2)
+            pygame.draw.circle(surface, (28, 18, 12), (rect.x + 9, rect.y + 9), 9)
+            draw_outlined(surface, "ECV"[i], (rect.x + 9, rect.y + 9), 14, (255, 255, 255), center=True, width=1)
+            if rect.collidepoint(game.mouse_pos):  # tooltip
+                tip = outlined_text(cfg["desc"], 17, (255, 255, 255), COLORS["ink"], 2)
+                box = tip.get_rect(midbottom=(min(1100, max(tip.get_width() // 2 + 10, rect.centerx)), self.bar.y - 52)).inflate(24, 12)
+                surface.blit(gfx.pill(box.w, box.h, alpha=200), box)
+                surface.blit(tip, tip.get_rect(center=box.center))
 
     def _draw_slot(self, surface, game: "Game") -> None:
         """Recessed wooden slot: escalation timer in preparation, spawn progress in battle."""
@@ -408,6 +495,7 @@ class UI:
                       COLORS["text_dim"], width=1)
         for i, line in enumerate(wrap_text(self._stats_text(t), 16, PANEL_W - 40)[:2]):
             draw_outlined(surface, line, (x, p.y + 18 + 52 + 6 + i * 17), 16, (225, 235, 255), width=1)
+        self._draw_target_row(surface, game)
         self._draw_activity_buttons(surface, game)
         for i, rect in enumerate(self.upgrade_btns):
             self._draw_upgrade_card(surface, game, i, rect)
@@ -415,6 +503,44 @@ class UI:
         self._btn(surface, self.sell_btn, COLORS["btn_red"], game, pressed=confirming)
         draw_outlined(surface, f"SURE?  +${t.sell_value}" if confirming else f"SELL  +${t.sell_value}",
                       self.sell_btn.center, 24, center=True)
+
+    def _draw_target_row(self, surface, game: "Game") -> None:
+        t = game.selected
+        for i, rect in enumerate(self.target_rects):
+            self._btn(surface, rect, COLORS["btn_blue"], game, True, 8)
+            cx, cy, d = rect.centerx, rect.centery, (1 if i == 0 else -1)
+            pygame.draw.polygon(surface, (255, 255, 255), [(cx + 5 * d, cy - 7), (cx + 5 * d, cy + 7), (cx - 5 * d, cy)])
+        mid = pygame.Rect(self.target_rects[0].right + 6, self.target_rects[0].y, self.target_rects[1].x - self.target_rects[0].right - 12, 30)
+        pygame.draw.rect(surface, (18, 26, 56), mid, border_radius=8)
+        draw_outlined(surface, f"Target: {opts_mod.TARGET_LABELS[t.targeting]}  [T]", mid.center, 19, GOLD, center=True, width=1)
+
+    def _draw_options(self, surface, game: "Game") -> None:
+        dim = pygame.Surface((1280, 720), pygame.SRCALPHA)
+        dim.fill((8, 6, 18, 170))
+        surface.blit(dim, (0, 0))
+        p = self.opt_panel
+        self._build_options_layout()
+        surface.blit(gfx.panel_surface(p.w, p.h), (p.x - 2, p.y - 2))
+        draw_outlined(surface, "OPTIONS", (p.centerx, p.y + 40), 44, (255, 255, 255), center=True, width=3)
+        for key, rect in self.opt_rows:
+            if key in ("fullscreen", "restart", "resume"):
+                base = {"fullscreen": COLORS["btn_blue"], "restart": COLORS["btn_red"], "resume": COLORS["btn_green"]}[key]
+                self._btn(surface, rect, base, game, True, 10)
+                draw_outlined(surface, key.upper(), rect.center, 22, center=True)
+                continue
+            label = next(r[1] for r in opts_mod.ROWS if r[0] == key)
+            val = game.options[key]
+            surface.blit(gfx.pill(rect.w, rect.h, (14, 22, 52), 150), rect)
+            draw_outlined(surface, label, (rect.x + 12, rect.centery), 21, (255, 255, 255), anchor="midleft", width=2)
+            vb = pygame.Rect(0, 0, 150, 28)
+            vb.midright = (rect.right - 6, rect.centery)
+            on = val is True
+            self._btn(surface, vb, COLORS["btn_green"] if on else (70, 120, 200) if not isinstance(val, bool) else (110, 114, 130), game, True, 8)
+            draw_outlined(surface, opts_mod.value_text(key, val), vb.center, 19, center=True, width=1)
+            if not isinstance(val, bool):
+                for d, px in ((-1, vb.x + 10), (1, vb.right - 10)):
+                    pygame.draw.polygon(surface, (255, 255, 255), [(px + 4 * d, vb.centery - 6), (px + 4 * d, vb.centery + 6), (px - 4 * d, vb.centery)])
+        draw_outlined(surface, "Esc / O closes   -   changes save automatically", (p.centerx, p.bottom - 14), 15, COLORS["text_dim"], center=True, width=1)
 
     def _draw_activity_buttons(self, surface, game: "Game") -> None:
         t = game.selected
@@ -461,9 +587,9 @@ class UI:
         pygame.draw.rect(plate, (130, 240, 110, 190) if buyable else (255, 255, 255, 60), (0, 0, rect.w, rect.h), 2, border_radius=12)
         surface.blit(plate, rect.topleft)
         x, y = rect.x + 12, rect.y + 8
-        draw_outlined(surface, f"{'AB'[path]}  {t.data['paths'][path]['name']}  [{'QW'[path]}]", (x, y), 20, (255, 255, 255), width=2)
+        draw_outlined(surface, f"{'AB'[path]}  {t.data['paths'][path]['name']}", (x, y), 18, (255, 255, 255), width=2)
         for i in range(MAX_TIER):  # tier pips
-            c = (rect.right - 18 - (MAX_TIER - 1 - i) * 17, y + 36)
+            c = (rect.right - 18 - (MAX_TIER - 1 - i) * 16, y + 11)
             pygame.draw.circle(surface, (20, 14, 30), c, 7)
             pygame.draw.circle(surface, GOLD if i < t.tiers[path] else (70, 80, 120), c, 5)
             if i < t.tiers[path]:
@@ -471,12 +597,10 @@ class UI:
         if up is None:
             draw_outlined(surface, "MAX TIER", (rect.centerx, rect.centery + 8), 28, COLORS["good"], center=True, width=3)
             return
-        draw_outlined(surface, up["name"], (x, y + 26), 22, GOLD, width=2)
         pending = bool(t.pending_effects(up))
-        for i, line in enumerate(wrap_text(up["description"], 16, rect.w - 24)[:2 if pending else 3]):
-            draw_outlined(surface, line, (x, y + 54 + i * 17), 16, (225, 235, 255), width=1)
-        if pending:
-            draw_outlined(surface, "special effect: not implemented yet", (x, y + 90), 14, (190, 200, 225), width=1)
+        draw_outlined(surface, up["name"] + ("  (effect soon)" if pending else ""), (x, y + 26), 22, GOLD, width=2)
+        for i, line in enumerate(wrap_text(up["description"], 15, rect.w - 24)[:2]):
+            draw_outlined(surface, line, (x, y + 50 + i * 16), 15, (225, 235, 255), width=1)
         btn = pygame.Rect(rect.x + 10, rect.bottom - 42, rect.w - 20, 32)
         self._btn(surface, btn, COLORS["btn_green"], game, buyable, 9)
         if not ok:

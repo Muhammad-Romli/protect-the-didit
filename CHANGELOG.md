@@ -1,5 +1,19 @@
 # Changelog
 
+## Checkpoint 8 (2026-10-25, third batch)
+- **Bima** (Mathematician, cost 400, key 4). Graph path: Cartesian axis, typed formulas parsed by a safe custom parser (game/formula.py), curve sampling with adaptive refinement and discontinuity breaks (game/curves.py), Brain Energy cost by arc length, preview, FIRE, direction, patterns, miss refund. Geometry path: square/triangle/circle shots, per-target shape slots, collisions with per-enemy cooldown and capped percent damage, 3D shapes (Lv3), Cube / Pyramid / Sphere actives (Lv4). Numbers in data/bima.py. One path only.
+- Active skills finished: Jalu Thunderstrike and Loom Reset, Zizi Nap Time (+ debuff 25%), Romli random events. Bottom-bar ability buttons (E/C/V), aimed abilities wait for a map click.
+- Visuals: new Trojan (barrel-stave white wooden Didit with windows and wheels), Trojan / Trojan Trojan / Boss are bigger, Speedster afterimage trail, Reinforced Didit has 2 armor stages (full, damaged) instead of pips, new health bars (gradient, damage ghost, quarter ticks) and boss bars, more character VFX (tier glow + sparkles, muzzle flash, per-character hit effects, bigger upgrade bursts).
+- PYGBAG_HANDOFF.md: everything a new session needs to run the game in the browser.
+- Tests: tests/test_bima.py.
+
+## Checkpoint 7 (2026-10-25, second batch)
+1. Controls: speed x1/x2/x3 (F or the orange button; the simulation runs several steps per frame, so it stays accurate). START doubles as "skip prep". Options menu (gear button or O/Esc, saved to options.json): auto-start waves + delay, volume, screen shake, hit words, particles, danger glow, FPS, default target, fullscreen, restart. Per-tower target priority First/Last/Strong/Weak/Close (arrows in the panel or T / Shift+T).
+2. New enemies: Rich Didit (top hat, mustache, money bag; big bounty, steals money if it leaks), Speedster Didit (fast boss, starts 4.2x speed and decelerates over 13s), Reinforced Didit (10 armor hits before HP). Jalu path B renamed "Temporal Loom Guy"; tier 3 "The Temporal Loom" adds Speed Against Time (hit fast Didits walk at normal speed for 3s, refreshed per hit). Romli Programmer tier 2 "Better code" counts 1 hit as 3 against armor.
+3. 30 waves (data/waves.py). Intros: 6 Rich, 8 Reinforced, 10 Boss, 13 Trojan (now a miniboss), 17 Speedster, 22 Trojan Trojan. Special rounds (named banner, double clear bonus): 7 Stampede, 17 Speed Rush, 25 Iron Parade. Rich Didits come in the round before hard rounds. Bosses/minibosses appear as regular enemies from ~wave 18.
+4. Look: every Didit is white; Tanky Didit is bigger with a scar; Trojan Didit / Trojan Trojan Didit are Didit-shaped wooden statues painted white (chipped paint, plank seams, wheels).
+- Tests: test_new_enemies.py, test_options_targeting.py. Balance bot: 30 waves, 14 towers.
+
 ## Checkpoint 6 (2026-10-25): economy, Trojans, BTD6 UI, 3D-ish look
 - Economy: bounties x2 and +8% per wave (`BOUNTY_*` in settings), wave-clear bonus 100 + 35/wave, start money 750.
 - Wave scaling (`WAVE_SCALING` in data/waves.py): wave 1 = 0.5x HP / 0.85x speed ... wave 10 = 2.8x HP / 1.15x speed. Stacks with the prep-wait penalty. One Jalu holds waves 1-2 (bot).

@@ -16,6 +16,8 @@ from __future__ import annotations
 import random
 from typing import Callable
 
+import pygame
+
 from data.effects import EFFECT_PARAMS
 
 
@@ -39,7 +41,7 @@ def _pierce(tower, game, hook, **ctx):
         nxt = _nearest(game.enemies, primary.pos, victims, p["radius"])
         if nxt is None:
             break
-        game.hit_enemy(nxt, ctx["proj"].damage)
+        game.hit_enemy(nxt, ctx["proj"].damage, source=tower)
         victims.append(nxt)
     return None
 
@@ -57,7 +59,7 @@ def _chain_lightning(tower, game, hook, **ctx):
             break
         damage *= p["falloff"]
         game.add_bolt(current.pos, nxt.pos)
-        game.hit_enemy(nxt, damage)
+        game.hit_enemy(nxt, damage, source=tower)
         victims.append(nxt)
         current = nxt
     return None
@@ -75,6 +77,23 @@ def _time_push(tower, game, hook, **ctx):
     return None
 
 
+def _speed_against_time(tower, game, hook, **ctx):
+    """Fast enemies (Fast Didit, Speedster Didit) that get hit walk at normal speed for a few seconds."""
+    if hook != "hit":
+        return None
+    for e in ctx["victims"]:
+        if e.is_fast and e.alive:
+            if e.normalize_timer <= 0:
+                game.fx.normalized(e)
+            e.normalize_timer = EFFECT_PARAMS["speed_against_time"]["duration"]
+    return None
+
+
+def _armor_breaker(tower, game, hook, **ctx):
+    """Marker effect: Game.hit_enemy counts this tower's hits x3 against armor."""
+    return None
+
+
 def _sleep(tower, game, hook, **ctx):
     """Hits may stop enemies for a moment (bosses are immune, see Enemy)."""
     if hook != "hit":
@@ -89,13 +108,60 @@ def _sleep(tower, game, hook, **ctx):
 
 
 def _debuff(tower, game, hook, **ctx):
-    """Enemies inside this tower's range take extra damage from every tower."""
+    """Enemies inside this tower's range take extra damage from every tower (+25% once Nap Time is unlocked)."""
     if hook != "damage_taken":
         return None
     e = ctx["enemy"]
     if tower.pos.distance_to(e.pos) <= tower.stats["range"] + e.radius:
-        return EFFECT_PARAMS["damage_debuff_15"]["mult"]
+        return 1.25 if "nap_time_active" in tower.effects else EFFECT_PARAMS["damage_debuff_15"]["mult"]
     return None
+
+
+def _marker(tower, game, hook, **ctx):
+    """Effects that are handled elsewhere (actives, Bima paths): registered so the UI knows they exist."""
+    return None
+
+
+def _geo_effects(tower, game, hook, **ctx):
+    """Bima Geometry Lv2+: shape stacks. The hit target gets its shape slot filled (see game/bima.py)."""
+    if hook != "hit":
+        return None
+    from game import bima
+    p = ctx["proj"]
+    for e in ctx["victims"]:
+        bima.geo_on_hit(game, tower, e, p)
+    return None
+
+
+def _random_event(strong: bool):
+    """Romli Programmer: every 20s a random event: money gift, haste, or a bug (strong version: better odds)."""
+    def fn(tower, game, hook, **ctx):
+        if hook != "tick":
+            return None
+        if not strong and "random_event_strong" in tower.effects:
+            return None  # the strong version replaces the basic one
+        tower.event_timer = getattr(tower, "event_timer", 0.0) + ctx["dt"]
+        if tower.event_timer < 20.0 or game.phase.value != "battle":
+            return None
+        tower.event_timer = 0.0
+        r = random.random()
+        pos = tower.pos + pygame.Vector2(0, -50)
+        if r < (0.45 if strong else 0.4):
+            gift = min(800 if strong else 300, game.money * (0.2 if strong else 0.1)) + (50 if strong else 20)
+            game.add_money(gift)
+            game.fx.vfx.comic(pos, "JACKPOT!", (255, 220, 70), 34, 1.0)
+            game.fx.vfx.burst(tower.pos, (255, 220, 70), 24, 220, 0.8, 5, 260)
+            game.fx.vfx.text(pos + pygame.Vector2(0, 30), f"+${int(gift)}", (255, 255, 255), 26, 1.0, 30)
+        elif r < (0.9 if strong else 0.8):
+            tower.haste = (8.0 if strong else 6.0, 0.8 if strong else 0.4)
+            game.fx.vfx.comic(pos, "OVERCLOCK!", (110, 255, 160), 34, 1.0)
+            game.fx.vfx.pop(tower.pos, 60, (110, 255, 160), 0.4)
+        else:
+            tower.cooldown_left += 1.5 if strong else 3.0
+            game.fx.vfx.comic(pos, "BUG!", (255, 110, 100), 36, 1.0)
+            game.fx.vfx.burst(tower.pos, (255, 110, 100), 12, 140, 0.5, 4, 100)
+        return None
+    return fn
 
 
 def _aura(name: str) -> Callable:
@@ -120,9 +186,17 @@ def _boss_bonus(tower, game, hook, **ctx):
 
 
 EFFECTS: dict[str, Callable] = {
+    "geo_effects": _geo_effects,
+    "random_event": _random_event(False),
+    "random_event_strong": _random_event(True),
+    **{n: _marker for n in ("graph_axis", "graph_patterns", "graph_advanced", "geo_shapes", "geo_3d",
+                            "thunderstrike_active", "loom_reset_active", "nap_time_active",
+                            "cube_active", "pyramid_active", "sphere_active")},
     "pierce_1": _pierce,
     "chain_lightning": _chain_lightning,
     "time_push": _time_push,
+    "speed_against_time": _speed_against_time,
+    "armor_breaker": _armor_breaker,
     "sleep_chance": _sleep,
     "damage_debuff_15": _debuff,
     "aura_attack_speed_10": _aura("aura_attack_speed_10"),

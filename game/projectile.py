@@ -5,7 +5,7 @@ import math
 
 import pygame
 
-from game import gfx
+from game import gfx, sprites_proc
 from game.assets import sprite
 from game.enemy import Enemy
 from game.utils import Vec
@@ -24,6 +24,8 @@ class Projectile:
         self.slow = slow
         self.slow_duration = slow_duration
         self.money_on_hit = money_on_hit
+        self.shape: int | None = None   # Bima's geometry shots: 0 square, 1 triangle, 2 circle
+        self.solid = False              # Lv3: cube / pyramid / sphere
         self.color = color
         self.source = source  # firing Tower (its effects run on hit)
         self.arrived = False
@@ -48,6 +50,15 @@ class Projectile:
             angle = -math.degrees(math.atan2(d.y, d.x)) if d.length() > 0 else 0
             img = pygame.transform.rotate(img, angle)
             surface.blit(img, img.get_rect(center=(x, y)))
+            return
+        if self.shape is not None:
+            spr = sprites_proc.shape_sprite(self.shape, self.solid, 26)
+            t = pygame.time.get_ticks() / 1000
+            spr = pygame.transform.rotozoom(spr, (t * 240) % 360, 1.0)
+            gfx.blit_shadow(surface, (x + 5, y + 14), 22, 9, 80)
+            halo = gfx.glow(22, sprites_proc.SHAPE_COLORS[self.shape], 150)
+            surface.blit(halo, halo.get_rect(center=(x, y)), special_flags=pygame.BLEND_RGB_ADD)
+            surface.blit(spr, spr.get_rect(center=(x, y)))
             return
         r = 7 if self.aoe_radius > 0 else 5
         gfx.blit_shadow(surface, (x + 5, y + 13), r * 2.4, r * 1.1, 80)   # shadow stays on the ground: the shot floats

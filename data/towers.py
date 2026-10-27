@@ -16,7 +16,7 @@ DEFAULT_STATS = {
     "money_per_hit": 0.0,
 }
 
-TOWER_ORDER = ["jalu", "romli", "zizi"]
+TOWER_ORDER = ["jalu", "romli", "zizi", "bima"]
 
 
 def _up(name, cost, description, stat_mods=None, effects=None, voice_line=None):
@@ -25,6 +25,34 @@ def _up(name, cost, description, stat_mods=None, effects=None, voice_line=None):
 
 
 TOWERS = {
+    # Bima the Mathematician: path A = Graph (formula curves), path B = Geometry (shape stacks).
+    # Only ONE path can be used (Tower.can_upgrade). Numbers: data/bima.py, logic: game/bima.py.
+    "bima": {
+        "name": "Bima", "color": (255, 160, 70), "cost": 400,
+        "stats": {"damage": 1.5, "cooldown": 1.0, "range": 140, "proj_speed": 420},
+        "paths": [
+            {"name": "Graph", "tiers": [
+                _up("Math gets easier", 150, "Graphs click: more damage and attack speed.",
+                    {"damage": 0.5, "cooldown": -0.1}),
+                _up("Cartesian plane", 350, "Axis with Bima at (0,0). Type formulas to fire curves (Brain Energy).",
+                    {}, ["graph_axis"]),
+                _up("Pattern book", 600, "Preset formulas with adjustable parameters. Typing still works.",
+                    {"damage": 0.5}, ["graph_patterns"]),
+                _up("Calculus", 1300, "Unlocks sin, cos, tan, ln, exp. Longer, cheaper curves.",
+                    {"damage": 1}, ["graph_advanced"]),
+            ]},
+            {"name": "Geometry", "tiers": [
+                _up("Shapes", 150, "Shots become squares, triangles, circles. More damage.",
+                    {"damage": 0.5}, ["geo_shapes"]),
+                _up("Shape effects", 350, "Square: +25% dmg taken. Triangle: x1.5. Circle: slow. All 3 = collision!",
+                    {}, ["geo_effects"]),
+                _up("Solid geometry", 600, "Cube, pyramid, sphere: stronger effects and collision.",
+                    {"damage": 0.5}, ["geo_3d"]),
+                _up("Euclid's mastery", 1300, "Actives: Cube wall, Pyramid buff, Sphere shield + trap.",
+                    {"damage": 1}, ["cube_active", "pyramid_active", "sphere_active"]),
+            ]},
+        ],
+    },
     # ------------------------------------------------------------------ Jalu
     "jalu": {
         "name": "Jalu", "color": (80, 140, 255), "cost": 200,
@@ -40,13 +68,13 @@ TOWERS = {
                 _up("Thunderstrike", 1100, "Active: heavy AoE at a chosen point. Stronger attacks.",
                     {"damage": 5, "cooldown": -0.2}, ["thunderstrike_active"], "jalu_a4"),
             ]},
-            {"name": "Time Loom Guy", "tiers": [
+            {"name": "Temporal Loom Guy", "tiers": [
                 _up("Costume & scepter", 120, "Small damage and range boost.",
                     {"damage": 0.5, "range": 20}, voice_line="jalu_b1"),
                 _up("Magic bolts", 300, "Bolts apply a short slow.",
                     {"damage": 0.5, "slow": 0.2, "slow_duration": 1.0}, voice_line="jalu_b2"),
-                _up("The Time Loom", 500, "Hits can push enemies back along the path (not bosses).",
-                    {"damage": 1, "slow": 0.1}, ["time_push"], "jalu_b3"),
+                _up("The Temporal Loom", 500, "Hits push enemies back (not bosses). Speed Against Time: hit fast Didits walk at normal speed 3s.",
+                    {"damage": 1, "slow": 0.1}, ["time_push", "speed_against_time"], "jalu_b3"),
                 _up("Loom Reset", 1100, "Active: push back + freeze enemies in range 2s. Stronger attacks.",
                     {"damage": 3, "range": 20, "cooldown": -0.15}, ["loom_reset_active"], "jalu_b4"),
             ]},
@@ -70,8 +98,8 @@ TOWERS = {
             {"name": "Programmer", "tiers": [
                 _up("Decoder", 130, "Attacks give a small money bonus per hit.",
                     {"money_per_hit": 1}),
-                _up("Better code", 320, "Faster attacks, more money per hit.",
-                    {"cooldown": -0.3, "money_per_hit": 1, "damage": 0.5}),
+                _up("Better code", 320, "Faster attacks, more money per hit. Breaks armor: 1 hit counts as 3.",
+                    {"cooldown": -0.3, "money_per_hit": 1, "damage": 0.5}, ["armor_breaker"]),
                 _up("Random event", 550, "Every 20s: +10% money / attack-speed boost / bug.",
                     {"damage": 1, "money_per_hit": 1}, ["random_event"]),
                 _up("Stronger events", 1200, "Stronger event outcomes. Higher base damage.",

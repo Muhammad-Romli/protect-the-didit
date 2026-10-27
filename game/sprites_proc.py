@@ -27,8 +27,8 @@ def _cut_below(img: pygame.Surface, y: int) -> pygame.Surface:
 
 
 # ------------------------------------------------------------------ hamster
-def _hamster_upper(kind: str, r: float, color) -> pygame.Surface:
-    pad = int(r * 0.9)
+def _hamster_upper(kind: str, r: float, color, armored: int = 0) -> pygame.Surface:
+    pad = int(r * 1.15)
     size = int(2 * r + 2 * pad)
     L = gfx.blank(size, size)
     c = size / 2
@@ -50,15 +50,15 @@ def _hamster_upper(kind: str, r: float, color) -> pygame.Surface:
         pygame.draw.circle(mask, (255, 255, 255, 255), (c, c), r)
         band.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
         L.blit(band, (0, 0))
-    elif kind == "tanky":
-        dome = gfx.sphere(1.06 * r, (150, 160, 178), bounce=(180, 200, 220), shine=1.2)
-        d = _cut_below(dome, int(dome.get_height() * 0.46))
-        _put(L, d, c, c - 0.10 * r - (dome.get_height() * 0.04))
-        pygame.draw.line(L, (90, 98, 116), (c - 1.0 * r, c - 0.20 * r), (c + 1.0 * r, c - 0.20 * r), max(2, int(0.1 * r)))
-        for dx in (-0.55, 0, 0.55):
-            pygame.draw.circle(L, (210, 216, 226), (c + dx * r, c - 0.20 * r), max(1, 0.06 * r))
+    elif kind == "tanky":  # big and scarred: a vertical scar over the front eye, torn ear, heavy brows
+        pygame.draw.line(L, (200, 70, 80), (c + 0.50 * r, c - 0.62 * r), (c + 0.84 * r, c + 0.10 * r), max(2, int(0.09 * r)))
+        pygame.draw.line(L, (255, 170, 170), (c + 0.50 * r - 1, c - 0.62 * r), (c + 0.84 * r - 1, c + 0.10 * r), max(1, int(0.03 * r)))
+        for t in (0.2, 0.45, 0.7):  # stitches
+            sx, sy = c + (0.50 + 0.34 * t) * r, c + (-0.62 + 0.72 * t) * r
+            pygame.draw.line(L, (90, 30, 40), (sx - 0.11 * r, sy - 0.03 * r), (sx + 0.11 * r, sy + 0.05 * r), max(1, int(0.04 * r)))
+        pygame.draw.polygon(L, (0, 0, 0, 0), [(c + 0.38 * r, c - 1.14 * r), (c + 0.62 * r, c - 1.1 * r), (c + 0.5 * r, c - 0.92 * r)])  # torn ear notch
         for dx in (0.28, 0.68):  # angry brows
-            pygame.draw.line(L, (30, 20, 20), (c + (dx - 0.16) * r, c - 0.40 * r), (c + (dx + 0.14) * r, c - 0.30 * r), max(2, int(0.08 * r)))
+            pygame.draw.line(L, (60, 50, 50), (c + (dx - 0.18) * r, c - 0.44 * r), (c + (dx + 0.16) * r, c - 0.30 * r), max(3, int(0.11 * r)))
     elif kind == "boss":
         crown = [(c - 0.62 * r, c - 0.78 * r), (c - 0.62 * r, c - 1.42 * r), (c - 0.30 * r, c - 1.08 * r),
                  (c, c - 1.55 * r), (c + 0.30 * r, c - 1.08 * r), (c + 0.62 * r, c - 1.42 * r), (c + 0.62 * r, c - 0.78 * r)]
@@ -68,12 +68,105 @@ def _hamster_upper(kind: str, r: float, color) -> pygame.Surface:
             pygame.draw.circle(L, col, (c + dx * r, c - 0.9 * r), max(2, 0.08 * r))
         for dx in (0.28, 0.68):
             pygame.draw.line(L, (40, 0, 0), (c + (dx - 0.20) * r, c - 0.42 * r), (c + (dx + 0.16) * r, c - 0.30 * r), max(2, int(0.1 * r)))
+    elif kind == "rich":
+        _rich_extras(L, r, c)
+    elif kind == "speedster":
+        _speedster_extras(L, r, c)
+    elif kind == "reinforced":
+        _reinforced_extras(L, r, c, armored)
     return L
 
 
-def _hamster_frame(kind: str, r: float, color, frame: int) -> pygame.Surface:
+def _rich_extras(L: pygame.Surface, r: float, c: float) -> None:
+    """Top hat, monocle, handlebar mustache and a bag of money."""
+    ink = (20, 20, 26)
+    # mustache (under the nose, curled up at the ends)
+    pygame.draw.ellipse(L, ink, (c + 0.40 * r, c + 0.16 * r, 0.40 * r, 0.17 * r))
+    pygame.draw.ellipse(L, ink, (c + 0.78 * r, c + 0.18 * r, 0.30 * r, 0.15 * r))
+    pygame.draw.circle(L, ink, (c + 0.40 * r, c + 0.13 * r), max(1.5, 0.07 * r))
+    pygame.draw.circle(L, ink, (c + 1.06 * r, c + 0.15 * r), max(1.5, 0.06 * r))
+    # monocle on the front eye + chain
+    ring = (240, 190, 50)
+    pygame.draw.circle(L, (210, 235, 255, 90), (c + 0.68 * r, c - 0.16 * r), 0.27 * r)
+    pygame.draw.circle(L, ring, (c + 0.68 * r, c - 0.16 * r), 0.27 * r, max(2, int(0.07 * r)))
+    pygame.draw.line(L, ring, (c + 0.88 * r, c + 0.02 * r), (c + 1.0 * r, c + 0.55 * r), max(1, int(0.04 * r)))
+    # top hat
+    pygame.draw.ellipse(L, ink, (c - 0.80 * r, c - 1.06 * r, 1.60 * r, 0.34 * r))
+    pygame.draw.ellipse(L, (70, 70, 84), (c - 0.74 * r, c - 1.05 * r, 1.30 * r, 0.12 * r))
+    crown = gfx.hgradient(int(0.98 * r), int(0.95 * r), [(0, (70, 70, 84)), (0.3, (36, 36, 44)), (1, (12, 12, 16))])
+    L.blit(crown, (c - 0.49 * r, c - 1.92 * r))
+    pygame.draw.ellipse(L, (60, 60, 72), (c - 0.49 * r, c - 2.02 * r, 0.98 * r, 0.22 * r))
+    pygame.draw.ellipse(L, (28, 28, 34), (c - 0.43 * r, c - 2.0 * r, 0.86 * r, 0.16 * r))
+    pygame.draw.rect(L, (200, 40, 50), (c - 0.49 * r, c - 1.22 * r, 0.98 * r, 0.20 * r))
+    pygame.draw.rect(L, (250, 205, 70), (c - 0.12 * r, c - 1.24 * r, 0.24 * r, 0.24 * r), max(1, int(0.04 * r)))
+    pygame.draw.line(L, (130, 130, 150), (c - 0.34 * r, c - 1.80 * r), (c - 0.34 * r, c - 1.3 * r), max(1, int(0.05 * r)))
+    # bag of money held in front
+    bag = gfx.ellipsoid(int(0.95 * r), int(1.0 * r), (196, 150, 82), bounce=(150, 190, 100), shine=0.3)
+    bx, by = c + 0.62 * r, c + 0.70 * r
+    L.blit(bag, bag.get_rect(center=(round(bx), round(by))))
+    pygame.draw.polygon(L, (150, 106, 54), [(bx - 0.22 * r, by - 0.45 * r), (bx + 0.22 * r, by - 0.45 * r), (bx + 0.12 * r, by - 0.28 * r), (bx - 0.12 * r, by - 0.28 * r)])
+    pygame.draw.line(L, (90, 56, 28), (bx - 0.2 * r, by - 0.3 * r), (bx + 0.2 * r, by - 0.3 * r), max(1, int(0.07 * r)))
+    f = pygame.font.Font(None, max(10, int(0.95 * r)))
+    t = f.render("$", True, (255, 236, 120))
+    L.blit(t, t.get_rect(center=(round(bx), round(by + 0.1 * r))))
+    for dx in (-0.45, 0.5):  # spilled coins
+        pygame.draw.circle(L, (180, 120, 20), (bx + dx * r, by + 0.46 * r), max(2, 0.13 * r))
+        pygame.draw.circle(L, (255, 215, 80), (bx + dx * r, by + 0.44 * r), max(2, 0.11 * r))
+
+
+def _speedster_extras(L: pygame.Surface, r: float, c: float) -> None:
+    """Goggles, a streaming scarf and a lightning mark: it is in a hurry."""
+    gfx.poly(L, (230, 60, 70), [(c - 0.3 * r, c + 0.42 * r), (c + 0.25 * r, c + 0.52 * r), (c - 1.3 * r, c + 0.78 * r), (c - 1.2 * r, c + 0.52 * r)], (110, 20, 30), max(1, int(0.05 * r)))
+    pygame.draw.line(L, (30, 40, 60), (c - 0.9 * r, c - 0.42 * r), (c + 0.35 * r, c - 0.3 * r), max(2, int(0.12 * r)))  # goggle strap
+    for dx in (0.28, 0.68):
+        pygame.draw.circle(L, (30, 40, 60), (c + dx * r, c - 0.16 * r), 0.30 * r)
+        pygame.draw.circle(L, (90, 210, 255), (c + dx * r, c - 0.16 * r), 0.23 * r)
+        pygame.draw.circle(L, (210, 245, 255), (c + (dx - 0.07) * r, c - 0.23 * r), 0.08 * r)
+    bolt = [(c + 0.05 * r, c - 0.98 * r), (c - 0.18 * r, c - 0.62 * r), (c - 0.02 * r, c - 0.62 * r), (c - 0.14 * r, c - 0.34 * r),
+            (c + 0.18 * r, c - 0.7 * r), (c + 0.02 * r, c - 0.7 * r)]
+    gfx.poly(L, (255, 230, 70), bolt, (150, 100, 0), max(1, int(0.04 * r)))
+
+
+def _reinforced_extras(L: pygame.Surface, r: float, c: float, stage: int) -> None:
+    """stage 2 = full armor (shiny helmet, chest plate, shoulder pads);
+    stage 1 = damaged (cracked helmet, holed plate, one pad missing); 0 = armor gone."""
+    steel, dark = (158, 168, 186), (86, 94, 112)
+    brow = lambda: [pygame.draw.line(L, (30, 20, 20), (c + (dx - 0.16) * r, c - 0.42 * r), (c + (dx + 0.14) * r, c - 0.30 * r), max(2, int(0.08 * r))) for dx in (0.28, 0.68)]
+    if stage >= 1:
+        full = stage == 2
+        pads = (-0.85, 0.85) if full else (0.85,)
+        for dx in pads:  # shoulder pads
+            pad = gfx.sphere(0.32 * r, steel if full else (124, 132, 148), bounce=(180, 200, 220), shine=1.0)
+            _put(L, pad, c + dx * r, c + 0.45 * r)
+        plate = gfx.ellipsoid(int(1.3 * r), int(0.85 * r), steel if full else (128, 136, 152), bounce=(180, 200, 220), shine=1.1 if full else 0.4)
+        _put(L, plate, c + 0.15 * r, c + 0.52 * r)
+        pygame.draw.line(L, dark, (c + 0.15 * r, c + 0.2 * r), (c + 0.15 * r, c + 0.82 * r), max(1, int(0.05 * r)))
+        dome = gfx.sphere(1.08 * r, steel if full else (130, 138, 154), bounce=(180, 200, 220), shine=1.2 if full else 0.4)
+        d = _cut_below(dome, int(dome.get_height() * 0.5))
+        _put(L, d, c, c - 0.08 * r - dome.get_height() * 0.04)
+        pygame.draw.line(L, dark, (c - 1.02 * r, c - 0.18 * r), (c + 1.02 * r, c - 0.18 * r), max(2, int(0.1 * r)))
+        for dx in (-0.6, 0.0, 0.6):
+            pygame.draw.circle(L, (215, 220, 232), (c + dx * r, c - 0.18 * r), max(1, 0.06 * r))
+        if full:  # shine + crest
+            pygame.draw.line(L, (255, 255, 255), (c - 0.5 * r, c - 0.72 * r), (c - 0.1 * r, c - 0.92 * r), max(1, int(0.06 * r)))
+            gfx.poly(L, (220, 50, 60), [(c - 0.1 * r, c - 1.0 * r), (c, c - 1.42 * r), (c + 0.1 * r, c - 1.0 * r)], (110, 20, 30), 1)
+        else:  # cracks, a hole in the plate, a dent in the helmet
+            for pts in (((-0.1, -0.92), (0.05, -0.62), (-0.12, -0.38)), ((0.3, -0.85), (0.42, -0.55))):
+                pygame.draw.lines(L, (40, 44, 56), False, [(c + x * r, c + y * r) for x, y in pts], max(1, int(0.05 * r)))
+            pygame.draw.polygon(L, (236, 232, 228), [(c + 0.35 * r, c + 0.42 * r), (c + 0.62 * r, c + 0.5 * r), (c + 0.5 * r, c + 0.72 * r), (c + 0.28 * r, c + 0.62 * r)])
+            pygame.draw.lines(L, dark, True, [(c + 0.35 * r, c + 0.42 * r), (c + 0.62 * r, c + 0.5 * r), (c + 0.5 * r, c + 0.72 * r), (c + 0.28 * r, c + 0.62 * r)], max(1, int(0.04 * r)))
+            pygame.draw.circle(L, (200, 70, 60), (c + 0.9 * r, c + 0.55 * r), max(2, 0.07 * r))  # a scratch of red paint
+        if not full:
+            brow()
+    else:  # armor gone: scraps + angry brows
+        for dx, dy in ((-0.7, 0.8), (0.9, 0.9)):
+            pygame.draw.polygon(L, (110, 118, 134), [(c + dx * r, c + dy * r), (c + (dx + 0.3) * r, c + (dy - 0.05) * r), (c + (dx + 0.2) * r, c + (dy + 0.2) * r)])
+        brow()
+
+
+def _hamster_frame(kind: str, r: float, color, frame: int, armored: int = 0) -> pygame.Surface:
     phi = frame / FRAMES * math.tau
-    upper = _hamster_upper(kind, r, color)
+    upper = _hamster_upper(kind, r, color, armored)
     w, h = upper.get_size()
     sx = 1 + 0.05 * math.sin(2 * phi)
     img = pygame.transform.smoothscale(upper, (max(2, int(w * sx)), max(2, int(h * (2 - sx)))))
@@ -85,95 +178,107 @@ def _hamster_frame(kind: str, r: float, color, frame: int) -> pygame.Surface:
         pygame.draw.ellipse(canvas, (236, 150, 150), (c + dx * r - 0.22 * r, c + 0.78 * r - lift[side] * 0.22 * r, 0.46 * r, 0.30 * r))
     bob = abs(math.sin(phi)) * 0.10 * r
     _put(canvas, img, c, c - bob)
-    if kind == "fast":  # speed streaks behind (left)
+    if kind in ("fast", "speedster"):  # speed streaks behind (left)
+        col = (255, 255, 255, 140) if kind == "fast" else (120, 210, 255, 190)
         for i, y in enumerate((-0.35, 0.05, 0.45)):
-            pygame.draw.line(canvas, (255, 255, 255, 140), (c - 1.05 * r - 0.25 * r * (i % 2), c + y * r),
-                             (c - 1.55 * r, c + y * r), max(1, int(0.07 * r)))
+            pygame.draw.line(canvas, col, (c - 1.05 * r - 0.25 * r * (i % 2), c + y * r),
+                             (c - (1.55 if kind == 'fast' else 1.95) * r, c + y * r), max(1, int(0.07 * r)))
     return canvas
 
 
 # ------------------------------------------------------------------- trojan
+WOOD = (176, 120, 62)
+PAINT = (246, 244, 240)
+
+
+def _wooden_didit(r: float, boss: bool) -> pygame.Surface:
+    """A giant Didit statue carved from wood and painted white: barrel-stave seams, iron (or gold)
+    bands, and glowing windows with tiny Didits peeking out. Sits on a cart (see _trojan_frame)."""
+    up = _hamster_upper("normal", r, PAINT)
+    c = up.get_width() / 2
+    ov = gfx.blank(*up.get_size())
+    seam = (168, 150, 122, 190)
+    for x0 in (-0.78, -0.52, -0.26, 0.0, 0.26, 0.52, 0.78):  # staves: meridians of the ball
+        pts = [(c + x0 * math.sqrt(max(0.0, 1 - y * y)) * r, c + y * r) for y in [i / 8 - 1 for i in range(17)]]
+        pygame.draw.lines(ov, seam, False, pts, max(1, int(0.035 * r)))
+    band = (255, 206, 70, 255) if boss else (74, 74, 88, 255)
+    for y0 in (-0.38, 0.46):  # bands around the belly
+        pts = [(c + x * r, c + y0 * r + 0.14 * r * (1 - x * x)) for x in [i / 8 - 1 for i in range(17)]]
+        pygame.draw.lines(ov, band, False, pts, max(3, int(0.13 * r)))
+        for x in (-0.7, -0.35, 0.0, 0.35, 0.7):
+            pygame.draw.circle(ov, (30, 30, 40, 255), (c + x * r, c + y0 * r + 0.14 * r * (1 - x * x)), max(1, 0.03 * r))
+    mask = up.copy()
+    mask.fill((255, 255, 255, 255), special_flags=pygame.BLEND_RGB_MAX)
+    ov.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    up.blit(ov, (0, 0))
+    wins = (-0.55, -0.05, 0.45) if boss else (-0.1,)
+    for hx in wins:  # windows: warm light, tiny Didit heads inside
+        hy, wr = c + 0.50 * r, 0.20 * r
+        pygame.draw.circle(up, (96, 60, 30), (c + hx * r, hy), wr + max(2, 0.05 * r))
+        pygame.draw.circle(up, (255, 226, 140), (c + hx * r, hy), wr)
+        for ex in (-0.55, 0.55):
+            pygame.draw.circle(up, (250, 250, 250), (c + hx * r + ex * wr, hy - 0.7 * wr), 0.28 * wr)  # tiny ears
+        pygame.draw.circle(up, (250, 248, 244), (c + hx * r, hy + 0.1 * wr), 0.7 * wr)
+        for ex in (-0.28, 0.28):
+            pygame.draw.circle(up, (30, 24, 30), (c + hx * r + ex * wr, hy), max(1, 0.1 * wr))
+    if boss:  # crown
+        crown = [(c - 0.55 * r, c - 0.95 * r), (c - 0.55 * r, c - 1.5 * r), (c - 0.27 * r, c - 1.2 * r), (c, c - 1.6 * r),
+                 (c + 0.27 * r, c - 1.2 * r), (c + 0.55 * r, c - 1.5 * r), (c + 0.55 * r, c - 0.95 * r)]
+        gfx.poly(up, (255, 206, 60), crown, (120, 80, 10), max(2, int(0.06 * r)))
+        for dx, col in ((-0.3, (230, 50, 50)), (0, (60, 160, 255)), (0.3, (230, 50, 50))):
+            pygame.draw.circle(up, col, (c + dx * r, c - 1.12 * r), max(2, 0.06 * r))
+    return up
+
+
 def _trojan_frame(r: float, frame: int, boss: bool) -> pygame.Surface:
-    """Wooden Trojan horse on wheels with hamster ears peeking out of a hatch."""
-    S = gfx.SS
-    u = r * S
-    W, H = int(3.8 * u), int(3.3 * u)
-    cv = gfx.blank(W, H)
-    ox, oy = 1.75 * u, 1.9 * u  # sprite origin = body centre
     phi = frame / FRAMES * math.tau
-    ink = (58, 34, 18)
-    wood_base = (176, 120, 62) if not boss else (190, 128, 58)
-
-    def P(x, y):
-        return (ox + x * u, oy + y * u)
-
-    bob = abs(math.sin(phi)) * 0.05
-    trim = (255, 206, 70) if boss else (70, 70, 82)
-    # body box
-    front = [P(-1.1, -0.6 - bob), P(0.85, -0.6 - bob), P(0.85, 0.5 - bob), P(-1.1, 0.5 - bob)]
-    gfx.poly(cv, wood_base, front, ink, max(2, int(0.07 * u)))
-    for y in (-0.22, 0.14):
-        pygame.draw.line(cv, gfx.shade(wood_base, 0.7), P(-1.1, y - bob), P(0.85, y - bob), max(2, int(0.05 * u)))
-    for x in (-0.62, 0.35):
-        pygame.draw.rect(cv, trim, (*P(x, -0.6 - bob), 0.14 * u, 1.1 * u))
-        pygame.draw.rect(cv, gfx.shade(trim, 0.6), (*P(x, -0.6 - bob), 0.14 * u, 1.1 * u), max(1, int(0.03 * u)))
-    pygame.draw.line(cv, gfx.tint(wood_base, 0.35), P(-1.07, -0.57 - bob), P(0.82, -0.57 - bob), max(2, int(0.05 * u)))  # lit edge
-    # lid (top face, lit)
-    top = [P(-1.0, -0.86 - bob), P(0.78, -0.86 - bob), P(0.85, -0.6 - bob), P(-1.1, -0.6 - bob)]
-    gfx.poly(cv, gfx.tint(wood_base, 0.28), top, ink, max(2, int(0.06 * u)))
-    hatch_xs = (-0.55, -0.15, 0.25) if boss else (-0.2,)
-    for hx in hatch_xs:
-        pygame.draw.ellipse(cv, (40, 22, 12), (*P(hx - 0.22, -0.84 - bob), 0.44 * u, 0.16 * u))
-    # hamster ears peeking out of the hatch(es)
-    for hx in hatch_xs:
-        for dx in (-0.1, 0.1):
-            ex, ey = P(hx + dx, -0.93 - bob)
-            pygame.draw.circle(cv, (150, 100, 56), (ex, ey), 0.20 * u)
-            pygame.draw.circle(cv, (222, 168, 100), (ex - 0.02 * u, ey - 0.03 * u), 0.16 * u)
-            pygame.draw.circle(cv, (255, 176, 176), (ex, ey + 0.01 * u), 0.08 * u)
-    # neck + head + mane
-    neck = [P(0.5, -0.55 - bob), P(0.88, -0.55 - bob), P(1.12, -1.18 - bob), P(0.8, -1.22 - bob)]
-    gfx.poly(cv, wood_base, neck, ink, max(2, int(0.06 * u)))
-    head = [P(0.8, -1.32 - bob), P(1.2, -1.36 - bob), P(1.55, -1.1 - bob), P(1.5, -0.92 - bob), P(1.08, -0.98 - bob)]
-    gfx.poly(cv, gfx.tint(wood_base, 0.1), head, ink, max(2, int(0.06 * u)))
-    mane_col = (225, 40, 50) if not boss else (255, 70, 60)
-    for i in range(5):
-        t = i / 4
-        bx, by = 0.52 + 0.28 * t, -0.58 - 0.64 * t
-        gfx.poly(cv, mane_col, [P(bx, by - bob), P(bx - 0.26, by - 0.06 - bob), P(bx - 0.04, by - 0.26 - bob)], ink, max(1, int(0.04 * u)))
-    pygame.draw.circle(cv, (255, 255, 255), P(1.16, -1.2 - bob), 0.07 * u)
-    pygame.draw.circle(cv, (20, 12, 12), P(1.18, -1.2 - bob), 0.04 * u)
-    gfx.poly(cv, wood_base, [P(0.92, -1.34 - bob), P(0.98, -1.58 - bob), P(1.08, -1.34 - bob)], ink, max(1, int(0.04 * u)))
-    if boss:  # red plume + gold helm band
-        for i, a in enumerate((-0.5, -0.1, 0.3)):
-            gfx.poly(cv, (225, 40, 50), [P(0.98, -1.4 - bob), P(0.98 + 0.5 * math.sin(a) - 0.1, -1.4 - 0.5 - bob), P(1.1, -1.38 - bob)], ink, max(1, int(0.04 * u)))
-        pygame.draw.line(cv, trim, P(0.84, -1.3 - bob), P(1.1, -1.34 - bob), max(2, int(0.08 * u)))
-    # wheels
-    for wx in (-0.62, 0.42):
-        c = P(wx, 0.62)
-        rr = 0.36 * u
-        pygame.draw.circle(cv, ink, c, rr + 0.04 * u)
-        pygame.draw.circle(cv, (150, 100, 55), c, rr)
-        for k in range(4):
-            a = phi * 2 + k * math.pi / 2
-            pygame.draw.line(cv, (96, 60, 30), c, (c[0] + math.cos(a) * rr * 0.92, c[1] + math.sin(a) * rr * 0.92), max(2, int(0.06 * u)))
-        pygame.draw.circle(cv, (214, 170, 100), c, 0.1 * u)
-    return gfx.downscale(cv, S)
+    key = ("wooden", r, boss)
+    if key not in _CACHE:
+        _CACHE[key] = _wooden_didit(r, boss)
+    up = _CACHE[key]
+    w, h = up.get_size()
+    canvas = gfx.blank(w + 8, h + int(0.5 * r) + 8)
+    c = canvas.get_width() / 2
+    cy = c  # body centre y
+    ink = (52, 30, 16)
+    base = pygame.Rect(0, 0, int(2.1 * r), int(0.28 * r))  # cart platform
+    base.center = (round(c), round(cy + 0.98 * r))
+    pygame.draw.rect(canvas, ink, base.inflate(3, 3), border_radius=4)
+    pygame.draw.rect(canvas, (150, 100, 56), base, border_radius=4)
+    pygame.draw.rect(canvas, (206, 160, 100), (base.x + 2, base.y + 1, base.w - 4, max(2, base.h // 3)), border_radius=3)
+    wr = 0.36 * r
+    for wx in (-0.62, 0.62):  # wooden wheels, spokes roll
+        cx2, cy2 = c + wx * r, cy + 1.14 * r
+        pygame.draw.circle(canvas, ink, (cx2, cy2), wr + 2)
+        pygame.draw.circle(canvas, (140, 92, 50), (cx2, cy2), wr)
+        pygame.draw.circle(canvas, (96, 62, 32), (cx2, cy2), wr * 0.72, max(1, int(0.05 * r)))
+        for k in range(6):
+            a = phi * 2 + k * math.pi / 3
+            pygame.draw.line(canvas, (96, 62, 32), (cx2, cy2), (cx2 + math.cos(a) * wr * 0.9, cy2 + math.sin(a) * wr * 0.9), max(1, int(0.06 * r)))
+        pygame.draw.circle(canvas, (214, 170, 100), (cx2, cy2), max(2, 0.1 * r))
+    body = pygame.transform.rotozoom(up, 2.5 * math.sin(phi), 1.0)
+    canvas.blit(body, body.get_rect(center=(round(c), round(cy - abs(math.sin(phi)) * 0.04 * r))))
+    return canvas
 
 
 # --------------------------------------------------------------------- API
-def enemy_sprite(kind: str, radius: float, color, frame: int, facing_left: bool, flash: bool = False) -> pygame.Surface:
-    key = ("enemy", kind, radius, frame % FRAMES, facing_left, flash)
+def enemy_sprite(kind: str, radius: float, color, frame: int, facing_left: bool, flash: bool = False,
+                 armored: int = 0, ghost: bool = False) -> pygame.Surface:
+    """`armored`: 2 = full armor, 1 = damaged armor, 0 = none (Reinforced Didit). `ghost`: cyan afterimage."""
+    key = ("enemy", kind, radius, frame % FRAMES, facing_left, flash, armored, ghost)
     if key not in _CACHE:
         if kind in ("trojan", "trojan_trojan"):
             img = _trojan_frame(radius, frame % FRAMES, kind == "trojan_trojan")
         else:
-            img = _hamster_frame(kind, radius, color, frame % FRAMES)
+            img = _hamster_frame(kind, radius, color, frame % FRAMES, armored)
         if facing_left:
             img = pygame.transform.flip(img, True, False)
         if flash:
             img = img.copy()
             img.fill((130, 130, 130, 0), special_flags=pygame.BLEND_RGB_ADD)
+        if ghost:
+            img = img.copy()
+            img.fill((0, 110, 170, 0), special_flags=pygame.BLEND_RGB_ADD)
         _CACHE[key] = img
     return _CACHE[key]
 
@@ -182,6 +287,7 @@ TOWER_STYLE = {
     "jalu": {"shirt": (70, 130, 240), "hair": (46, 34, 56), "skin": (244, 206, 170)},
     "romli": {"shirt": (70, 190, 110), "hair": (30, 28, 30), "skin": (226, 184, 140)},
     "zizi": {"shirt": (176, 100, 214), "hair": (70, 40, 120), "skin": (238, 196, 156)},
+    "bima": {"shirt": (255, 160, 70), "hair": (60, 36, 24), "skin": (226, 178, 132)},
 }
 
 
@@ -232,6 +338,13 @@ def tower_sprite(kind: str, radius: float, color) -> pygame.Surface:
                 gfx.poly(cv, st["hair"], [P(dx - 0.2, -1.82), P(dx + 0.02, -2.28 + abs(dx) * 0.2), P(dx + 0.2, -1.82)])
     for dx in (-0.24, 0.24):  # eyes
         put(gfx.sphere(0.085 * radius, (22, 18, 26), shine=1.3), dx, -1.28)
+    if kind == "bima":  # round glasses and a pi on the shirt
+        for dx in (-0.24, 0.24):
+            pygame.draw.circle(cv, (50, 36, 30), P(dx, -1.28), 0.21 * u, max(2, int(0.05 * u)))
+        pygame.draw.line(cv, (50, 36, 30), P(-0.03, -1.30), P(0.03, -1.30), max(2, int(0.04 * u)))
+        f = pygame.font.Font(None, int(0.95 * u))
+        t = f.render("\u03c0", True, (255, 255, 255))
+        cv.blit(t, t.get_rect(center=P(0, -0.5)))
     if kind == "romli":  # glasses
         for dx in (-0.24, 0.24):
             pygame.draw.circle(cv, (40, 40, 50), P(dx, -1.28), 0.2 * u, max(2, int(0.045 * u)))
@@ -245,3 +358,73 @@ def tower_sprite(kind: str, radius: float, color) -> pygame.Surface:
 def tower_origin(radius: float) -> tuple[float, float]:
     """Pixel offset of the tower position (pedestal centre) inside tower_sprite()."""
     return 1.7 * radius, 3.70 * radius
+
+
+SHAPE_COLORS = [(255, 160, 60), (255, 220, 70), (90, 210, 255)]  # square, triangle, circle
+
+
+def shape_sprite(shape: int, solid: bool, size: int) -> pygame.Surface:
+    """Bima's shapes. 2D: flat but shaded square / triangle / circle. Solid (Lv3): cube / pyramid / sphere
+    drawn as shaded faces (fake 3D, light from the top-left)."""
+    key = ("shape", shape, solid, size)
+    if key in _CACHE:
+        return _CACHE[key]
+    S = gfx.SS
+    n = size * S
+    cv = gfx.blank(n, n)
+    col = SHAPE_COLORS[shape]
+    ink = (40, 24, 20)
+    u = n / 40.0
+
+    def P(x, y):
+        return (x * u, y * u)
+    if not solid:
+        if shape == 0:
+            r = pygame.Rect(*P(8, 8), 24 * u, 24 * u)
+            pygame.draw.rect(cv, ink, r.inflate(4 * u, 4 * u), border_radius=int(4 * u))
+            pygame.draw.rect(cv, gfx.shade(col, 0.8), r, border_radius=int(3 * u))
+            pygame.draw.rect(cv, col, r.inflate(-6 * u, -6 * u), border_radius=int(2 * u))
+            pygame.draw.rect(cv, gfx.tint(col, 0.5), (r.x + 3 * u, r.y + 3 * u, 18 * u, 4 * u), border_radius=int(2 * u))
+        elif shape == 1:
+            tri = [P(20, 5), P(35, 33), P(5, 33)]
+            pygame.draw.polygon(cv, ink, [P(20, 1), P(39, 36), P(1, 36)])
+            pygame.draw.polygon(cv, gfx.shade(col, 0.8), tri)
+            pygame.draw.polygon(cv, col, [P(20, 12), P(29, 29), P(11, 29)])
+            pygame.draw.line(cv, gfx.tint(col, 0.6), P(20, 8), P(10, 28), max(1, int(2 * u)))
+        else:
+            pygame.draw.circle(cv, ink, P(20, 20), 17 * u)
+            pygame.draw.circle(cv, gfx.shade(col, 0.8), P(20, 20), 15 * u)
+            pygame.draw.circle(cv, col, P(19, 19), 11 * u)
+            pygame.draw.circle(cv, (255, 255, 255), P(14, 13), 3 * u)
+    else:
+        if shape == 0:   # cube
+            gfx.poly(cv, gfx.tint(col, 0.45), [P(20, 4), P(35, 12), P(20, 20), P(5, 12)], ink, max(2, int(1.5 * u)))
+            gfx.poly(cv, gfx.shade(col, 0.95), [P(5, 12), P(20, 20), P(20, 37), P(5, 29)], ink, max(2, int(1.5 * u)))
+            gfx.poly(cv, gfx.shade(col, 0.6), [P(20, 20), P(35, 12), P(35, 29), P(20, 37)], ink, max(2, int(1.5 * u)))
+        elif shape == 1:  # pyramid
+            gfx.poly(cv, gfx.tint(col, 0.35), [P(20, 3), P(4, 30), P(21, 37)], ink, max(2, int(1.5 * u)))
+            gfx.poly(cv, gfx.shade(col, 0.62), [P(20, 3), P(21, 37), P(37, 29)], ink, max(2, int(1.5 * u)))
+        else:  # sphere
+            b = gfx.sphere(15.5, col, shine=1.2)
+            big = pygame.transform.smoothscale(b, (int(34 * u), int(34 * u)))
+            cv.blit(big, big.get_rect(center=P(20, 20)))
+    img = gfx.downscale(cv, S)
+    _CACHE[key] = img
+    return img
+
+
+def stack_icons(mask: int) -> pygame.Surface:
+    """Three tiny slots (square, triangle, circle): filled when the enemy carries that shape. Cached per mask."""
+    key = ("stack", mask)
+    if key not in _CACHE:
+        surf = gfx.blank(3 * 14 + 2, 14)
+        for i in range(3):
+            slot = pygame.Rect(i * 14 + 1, 1, 12, 12)
+            pygame.draw.rect(surf, (14, 10, 20, 210), slot, border_radius=4)
+            if mask & (1 << i):
+                ic = shape_sprite(i, False, 12)
+                surf.blit(ic, ic.get_rect(center=slot.center))
+            else:
+                pygame.draw.rect(surf, (255, 255, 255, 70), slot, 1, border_radius=4)
+        _CACHE[key] = surf
+    return _CACHE[key]

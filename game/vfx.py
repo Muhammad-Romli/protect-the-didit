@@ -11,7 +11,7 @@ import pygame
 from data.settings import PLAYFIELD_RECT
 from game.utils import Vec, get_font
 
-MAX_PARTICLES = 500
+MAX_PARTICLES = 500  # High; Low uses 1/4 of this (see VFX.max_particles)
 MAX_COMICS = 8
 _TEXT_CACHE: dict[tuple, pygame.Surface] = {}
 
@@ -75,6 +75,9 @@ class VFX:
         self.clear()
 
     def clear(self) -> None:
+        self.max_particles = getattr(self, "max_particles", MAX_PARTICLES)
+        self.shake_enabled = getattr(self, "shake_enabled", True)
+        self.comics_enabled = getattr(self, "comics_enabled", True)
         w, h = PLAYFIELD_RECT[2], PLAYFIELD_RECT[3]
         # slow drifting pollen/dust: [x, y, vx, vy, phase, size]
         self.motes = [[random.uniform(0, w), random.uniform(0, h), random.uniform(-6, 6),
@@ -83,6 +86,9 @@ class VFX:
         self.particles: list[Particle] = []
         self.rings: list[Ring] = []
         self.labels: list[Label] = []
+        self.bolts: list[list] = []   # lightning: [points, life, max_life, color, width]
+        self.flies: list[list] = []   # shapes flying to a point: [start, end, t, dur, sprite, spin]
+        self.pops: list[list] = []    # additive glow flashes: [pos, radius, life, max_life, color]
         self.shake_time = 0.0
         self.shake_amp = 0.0
         self.flash_color = (255, 0, 0)
@@ -94,7 +100,7 @@ class VFX:
     def burst(self, pos, color, n: int = 10, speed: float = 130, life: float = 0.45,
               size: float = 4, gravity: float = 180) -> None:
         for _ in range(n):
-            if len(self.particles) >= MAX_PARTICLES:
+            if len(self.particles) >= self.max_particles:
                 return
             ang = random.uniform(0, math.tau)
             spd = random.uniform(0.3, 1.0) * speed
@@ -105,14 +111,14 @@ class VFX:
     def sparkle(self, pos, color, n: int = 10) -> None:
         """Slow rising glitter (upgrades, stacks)."""
         for _ in range(n):
-            if len(self.particles) >= MAX_PARTICLES:
+            if len(self.particles) >= self.max_particles:
                 return
             off = Vec(random.uniform(-16, 16), random.uniform(-10, 10))
             self.particles.append(Particle(Vec(pos) + off, Vec(random.uniform(-15, 15), random.uniform(-70, -30)),
                                            0.7, 0.7, color, random.uniform(2, 4), -20))
 
     def trail(self, pos, color) -> None:
-        if len(self.particles) < MAX_PARTICLES:
+        if len(self.particles) < self.max_particles:
             self.particles.append(Particle(Vec(pos), Vec(0, 0), 0.22, 0.22, color, 3.5, 0))
 
     def ring(self, pos, r0: float, r1: float, life: float, color, width: int = 3) -> None:
@@ -123,13 +129,30 @@ class VFX:
         self.labels.append(Label(Vec(pos), text, color, size, life, life, rise))
 
     def comic(self, pos, text: str, color=(255, 230, 60), size: int = 34, life: float = 0.7) -> None:
-        if sum(1 for lb in self.labels if lb.comic) >= MAX_COMICS:
+        if not self.comics_enabled or sum(1 for lb in self.labels if lb.comic) >= MAX_COMICS:
             return
         self.labels.append(Label(Vec(pos), text, color, size, life, life, rise=20,
                                  angle=random.uniform(-12, 12), comic=True))
 
+    def lightning(self, a, b, color=(255, 240, 140), life: float = 0.25, width: int = 4, jitter: float = 16) -> None:
+        a, b = Vec(a), Vec(b)
+        n = max(3, int(a.distance_to(b) / 22))
+        d = (b - a)
+        nrm = Vec(-d.y, d.x).normalize() if d.length() else Vec(1, 0)
+        pts = [a]
+        for i in range(1, n):
+            pts.append(a + d * (i / n) + nrm * random.uniform(-jitter, jitter))
+        pts.append(b)
+        self.bolts.append([pts, life, life, color, width])
+
+    def fly(self, start, end, sprite, dur: float = 0.1, spin: float = 360) -> None:
+        self.flies.append([Vec(start), Vec(end), 0.0, dur, sprite, spin])
+
+    def pop(self, pos, radius: float, color, life: float = 0.2) -> None:
+        self.pops.append([Vec(pos), radius, life, life, color])
+
     def shake(self, amp: float, seconds: float) -> None:
-        if amp >= self.shake_amp or self.shake_time <= 0:
+        if self.shake_enabled and (amp >= self.shake_amp or self.shake_time <= 0):
             self.shake_amp, self.shake_time = amp, seconds
 
     def flash(self, color, alpha: float, seconds: float) -> None:
@@ -154,6 +177,15 @@ class VFX:
         for lb in self.labels:
             lb.life -= dt
             lb.pos.y -= lb.rise * dt
+        for b in self.bolts:
+            b[1] -= dt
+        self.bolts = [b for b in self.bolts if b[1] > 0]
+        for f in self.flies:
+            f[2] += dt
+        self.flies = [f for f in self.flies if f[2] < f[3]]
+        for pp in self.pops:
+            pp[2] -= dt
+        self.pops = [pp for pp in self.pops if pp[2] > 0]
         self.labels = [lb for lb in self.labels if lb.life > 0]
         self.shake_time = max(0.0, self.shake_time - dt)
         self.flash_time = max(0.0, self.flash_time - dt)
@@ -178,6 +210,22 @@ class VFX:
         for p in self.particles:
             size = max(1, int(p.size * p.life / p.max_life))
             pygame.draw.circle(surface, p.color, (int(p.pos.x), int(p.pos.y)), size)
+        from game import gfx
+        for pos, radius, life, max_life, color in self.pops:  # additive glow flashes
+            g = gfx.glow(int(radius * (0.6 + 0.6 * (1 - life / max_life))), color, int(255 * life / max_life))
+            surface.blit(g, g.get_rect(center=(int(pos.x), int(pos.y))), special_flags=pygame.BLEND_RGB_ADD)
+        for pts, life, max_life, color, width in self.bolts:
+            a = life / max_life
+            col = tuple(int(c * a) for c in color)
+            pygame.draw.lines(surface, tuple(int(c * 0.35 * a) for c in color), False, pts, width + 6)
+            pygame.draw.lines(surface, col, False, pts, width)
+            pygame.draw.lines(surface, (int(255 * a),) * 3, False, pts, max(1, width // 2))
+        for start, end, t, dur, spr, spin in self.flies:
+            k = min(1.0, t / dur)
+            k = k * k * k
+            pos = start.lerp(end, k)
+            img = pygame.transform.rotozoom(spr, spin * t, 1.0 - 0.3 * k)
+            surface.blit(img, img.get_rect(center=(int(pos.x), int(pos.y))))
         for lb in self.labels:
             self._draw_label(surface, lb)
 
