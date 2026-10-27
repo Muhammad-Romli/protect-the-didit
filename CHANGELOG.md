@@ -1,5 +1,14 @@
 # Changelog
 
+## Checkpoint 6 (2026-10-25): economy, Trojans, BTD6 UI, 3D-ish look
+- Economy: bounties x2 and +8% per wave (`BOUNTY_*` in settings), wave-clear bonus 100 + 35/wave, start money 750.
+- Wave scaling (`WAVE_SCALING` in data/waves.py): wave 1 = 0.5x HP / 0.85x speed ... wave 10 = 2.8x HP / 1.15x speed. Stacks with the prep-wait penalty. One Jalu holds waves 1-2 (bot).
+- New enemies: **Trojan Didit** (wooden horse, releases 5 normal Didits) from wave 5; **Trojan Trojan Didit** (boss, releases 3 Trojans) in waves 9-10. Data field `spawns`; children inherit multipliers; a leaking Trojan spawns nothing.
+- UI redone like BTD6: map fills the window, floating HUD (lives, money, round, pause), wooden bottom bar (UPGRADES, tower cards with prices, speed + start buttons), slide-in upgrade panel on the side away from the tower, boss bars, toasts, tooltips. Chunky font Lilita One (SIL OFL, assets/fonts).
+- 3D-ish look (game/gfx.py, scenery.py, sprites_proc.py): baked scenery with a raised cobblestone path (wall, rim, bevels), lit grass, trees/bushes/rocks/flowers with soft shadows; shaded-sphere enemies with 8 walk frames; tower pedestals; glow projectiles with ground shadows; depth sorting by y.
+- Map: new 1280x720 layout with rounded corners (`round_corners`). Placement uses BUILD_RECT (above the bar). `assets/sprites/background` override removed.
+- Tests: `tests/test_trojan_economy.py`; balance bot has SOLO and FULL builds.
+
 ## Checkpoint 5
 - Fullscreen: `pygame.SCALED | RESIZABLE` window, F11 / Alt+Enter toggle, focus loss pauses.
 - Money: every change goes through `Game.add_money`; HUD total counts up/down with merged `+$N` / `-$N` popups.

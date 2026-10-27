@@ -5,6 +5,7 @@ import random
 
 import pygame
 
+from data.settings import WORLD_CENTER
 from game.audio import Audio
 from game.vfx import VFX
 
@@ -132,6 +133,18 @@ class FX:
             self.audio.play("coin")
             self.vfx.text(enemy.pos + pygame.Vector2(0, -16), f"+${enemy.bounty}", GOLD, 22, 0.9, 38)
 
+    def trojan_opened(self, enemy, count: int) -> None:
+        """Hatch bursts open: wood chips, dust ring and a comic word."""
+        self.audio.play("crack")
+        wood = (176, 120, 62)
+        self.vfx.burst(enemy.pos, wood, 16, 190, 0.6, 5, 260)
+        self.vfx.burst(enemy.pos, (120, 80, 40), 10, 140, 0.5, 4, 260)
+        self.vfx.ring(enemy.pos, 6, 54 if enemy.is_boss else 38, 0.35, (240, 220, 180), 4)
+        self.vfx.comic(enemy.pos + pygame.Vector2(0, -34), "CRACK!", (255, 190, 80), 44 if enemy.is_boss else 34, 0.9)
+        self.vfx.text(enemy.pos + pygame.Vector2(0, -56), f"x{count}", (255, 255, 255), 26, 0.9, 30)
+        if enemy.is_boss:
+            self.vfx.shake(5, 0.35)
+
     def leaked(self, enemy, stash_pos) -> None:
         self.audio.play("leak")
         self.vfx.flash((255, 30, 30), 90, 0.4)
@@ -143,7 +156,7 @@ class FX:
     # ------------------------------------------------------------- waves
     def wave_started(self, number: int, boss: bool) -> None:
         self.audio.play("wave_start")
-        center = pygame.Vector2(500, 280)
+        center = pygame.Vector2(WORLD_CENTER)
         self.vfx.comic(center, "BOSS WAVE!" if boss else f"WAVE {number}!",
                        (255, 100, 100) if boss else (255, 230, 60), 72, 1.5)
         if boss:
@@ -156,7 +169,7 @@ class FX:
     def wave_cleared(self) -> None:
         self.audio.play("wave_clear")
         self.audio.play("wave_money")
-        self.vfx.comic(pygame.Vector2(500, 280), "WAVE CLEARED!", (160, 255, 120), 60, 1.5)
+        self.vfx.comic(pygame.Vector2(WORLD_CENTER), "WAVE CLEARED!", (160, 255, 120), 60, 1.5)
 
     def income(self, tower, amount: int, sound: bool = True) -> None:
         """Romli paid out (every 10s, or his per-wave income)."""
@@ -168,11 +181,11 @@ class FX:
 
     def warning(self) -> None:
         self.audio.play("warning")
-        self.vfx.comic(pygame.Vector2(500, 280), "HURRY UP!", (255, 140, 60), 56, 1.2)
+        self.vfx.comic(pygame.Vector2(WORLD_CENTER), "HURRY UP!", (255, 140, 60), 56, 1.2)
 
     def won(self) -> None:
         self.audio.play("win")
-        for x in (250, 500, 750):
+        for x in (320, 640, 960):
             self.vfx.burst(pygame.Vector2(x, 250), random.choice(COMIC_COLORS), 30, 220, 1.0, 5, 150)
 
     def lost(self) -> None:

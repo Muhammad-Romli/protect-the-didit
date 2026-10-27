@@ -96,6 +96,7 @@ SOUNDS: dict[str, tuple[Callable[[float], Samples], int, float, float]] = {
     "wave_clear": (lambda p: _arp([523, 659, 784, 1047, 1319], "sine", 0.09, 0.3, 0.35), 1, 0.5, 0.7),
     "boss": (lambda p: mix(tone(70, 45, 0.9, "saw", 0.5, 1.0, tremolo=14), noise_burst(0.9, 0.15, 1.5, 0.1)), 1, 1.0, 0.9),
     "boss_die": (lambda p: mix(noise_burst(0.8, 0.7, 1.8, 0.12), tone(120, 30, 0.8, "sine", 0.6, 1.5)), 1, 0.5, 1.0),
+    "crack": (lambda p: mix(noise_burst(0.22, 0.6, 2.2, 0.35), tone(160, 70, 0.2, "saw", 0.4, 2.5)), 1, 0.05, 0.9),
     "leak": (lambda p: mix(tone(420, 140, 0.3, "saw", 0.4, 1.5), noise_burst(0.2, 0.2, 2, 0.2)), 1, 0.12, 0.8),
     "zap": (lambda p: mix(noise_burst(0.12, 0.3, 2.5, 0.7), tone(1800, 300, 0.12, "square", 0.25, 2.5)), 1, 0.08, 0.6),
     "whoosh": (lambda p: noise_burst(0.25, 0.5, 1.2, 0.85), 1, 0.1, 0.6),

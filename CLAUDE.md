@@ -245,3 +245,9 @@ Each milestone must be runnable before moving on. Jalu is built first and fully.
 - Constants in UPPER_SNAKE_CASE; magic numbers go in `data/`.
 - Short functions. Keep `main.py` under ~50 lines.
 - No global mutable state outside the `Game` object.
+
+
+## Update 2026-10-25 (economy, Trojans, UI, look)
+- Enemies now also: `trojan` (28 HP, releases 5 normal) and `trojan_trojan` (boss, 350 HP, releases 3 trojan). Waves/scaling/bounties live in `data/waves.py` and `data/settings.py` (`BOUNTY_*`).
+- UI follows the BTD6 layout (see game/ui.py docstring). Visual helpers: `game/gfx.py`, `game/scenery.py`, `game/sprites_proc.py`. Single light from the top-left; shadows fall bottom-right.
+- Not done on purpose: the BTD6 orange ability button (active skills are still unimplemented); the orange button is speed.

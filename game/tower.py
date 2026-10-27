@@ -1,6 +1,7 @@
 """Tower: stats are base + sum of unlocked stat_mods (data-driven, no per-upgrade classes)."""
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Optional
 
 import pygame
@@ -12,8 +13,9 @@ from data.towers import DEFAULT_STATS, TOWERS
 from game.effects import EFFECTS
 from game.enemy import Enemy
 from game.projectile import Projectile
+from game import gfx, sprites_proc
 from game.assets import sprite
-from game.utils import Vec, draw_text
+from game.utils import Vec, draw_outlined
 
 if TYPE_CHECKING:
     from game.game import Game
@@ -144,36 +146,69 @@ class Tower:
         self.aim = (target.pos - self.pos).normalize() if target.pos != self.pos else self.aim
 
     # ----------------------------------------------------------------- draw
+    def draw_shadow(self, surface: pygame.Surface) -> None:
+        gfx.blit_shadow(surface, (self.pos.x + 14, self.pos.y + 14), 66, 26, 105)
+
     def draw(self, surface: pygame.Surface, selected: bool = False) -> None:
         x, y = int(self.pos.x), int(self.pos.y)
-        r = TOWER_RADIUS + int(4 * self.kick / 0.1)  # squash-and-stretch when firing
-        pygame.draw.ellipse(surface, (66, 120, 66), (x - r, y + r - 7, 2 * r, 12))  # ground shadow
-        img = sprite(f"towers/{self.kind}", 2 * TOWER_RADIUS + 10)
-        if img is not None:
-            if r != TOWER_RADIUS:
-                img = pygame.transform.smoothscale(img, (img.get_width() * r // TOWER_RADIUS, img.get_height() * r // TOWER_RADIUS))
+        if selected:  # pulsing ring on the ground under the pedestal
+            pulse = 2 * math.sin(pygame.time.get_ticks() / 160)
+            pygame.draw.ellipse(surface, (255, 255, 255), (x - 28 - pulse, y - 12 - pulse / 2, 56 + 2 * pulse, 28 + pulse), 3)
+        img = sprite(f"towers/{self.kind}", 2 * TOWER_RADIUS + 10)  # optional PNG override
+        custom = img is not None
+        if not custom:
+            img = sprites_proc.tower_sprite(self.kind, TOWER_RADIUS, self.color)
+        recoil = self.kick / 0.1
+        weapon_first = self.aim.y < 0  # aiming up: wand goes behind the body
+        if not custom and weapon_first:
+            self._draw_wand(surface, x, y, recoil)
+        if custom:
             surface.blit(img, img.get_rect(center=(x, y)))
-            if selected:
-                pygame.draw.circle(surface, (255, 255, 255), (x, y), r + 2, 2)
         else:
-            dark = tuple(c // 2 for c in self.color)
-            tip = self.pos + self.aim * (TOWER_RADIUS + 8)
-            pygame.draw.line(surface, dark, (x, y), (int(tip.x), int(tip.y)), 7)  # barrel
-            pygame.draw.circle(surface, self.color, (x, y), r)
-            pygame.draw.circle(surface, (255, 255, 255) if selected else (20, 20, 30),
-                               (x, y), r, 3 if selected else 2)
-            draw_text(surface, self.name[0], (x, y), 26, (15, 15, 25), center=True)
+            ox, oy = sprites_proc.tower_origin(TOWER_RADIUS)
+            surface.blit(img, (x - ox, y - oy - round(2 * recoil)))  # tiny hop when firing
+        if not custom and not weapon_first:
+            self._draw_wand(surface, x, y, recoil)
         pips = [(STACKS[n]["color"]) for n, c in self.stacks.items() for _ in range(c)]
         for i, color in enumerate(pips):  # one pip per active stack, above the tower
             px = x - (len(pips) - 1) * 4 + i * 8
-            pygame.draw.circle(surface, color, (px, y - TOWER_RADIUS - 7), 3)
-            pygame.draw.circle(surface, (20, 20, 30), (px, y - TOWER_RADIUS - 7), 3, 1)
+            pygame.draw.circle(surface, color, (px, y - TOWER_RADIUS * 3 - 4), 3)
+            pygame.draw.circle(surface, (20, 20, 30), (px, y - TOWER_RADIUS * 3 - 4), 3, 1)
         if self.stats["income_per_sec"] > 0:  # progress bar to the next income payout
             frac = min(1.0, self.income_timer / INCOME_INTERVAL_SECONDS)
-            pygame.draw.rect(surface, (30, 32, 40), (x - 15, y - TOWER_RADIUS - 11, 30, 5))
-            pygame.draw.rect(surface, (255, 215, 80), (x - 15, y - TOWER_RADIUS - 11, int(30 * frac), 5))
+            bar = pygame.Rect(x - 17, y - TOWER_RADIUS * 3 - 14, 34, 7)
+            pygame.draw.rect(surface, (30, 20, 12), bar.inflate(2, 2), border_radius=4)
+            pygame.draw.rect(surface, (80, 60, 30), bar, border_radius=3)
+            if frac > 0:
+                pygame.draw.rect(surface, (255, 215, 80), (bar.x, bar.y, max(3, int(bar.w * frac)), bar.h), border_radius=3)
         if self.activity:  # gold badge = busy with a preparation activity
-            pygame.draw.circle(surface, (240, 200, 70), (x + 13, y - 13), 6)
-            pygame.draw.circle(surface, (20, 20, 30), (x + 13, y - 13), 6, 1)
-        draw_text(surface, f"{self.tiers[0]}/{self.tiers[1]}", (x, y + TOWER_RADIUS + 8),
-                  18, (255, 255, 255), center=True)
+            pygame.draw.circle(surface, (38, 24, 18), (x + 20, y - 40), 9)
+            pygame.draw.circle(surface, (255, 214, 70), (x + 20, y - 40), 7)
+            pygame.draw.circle(surface, (255, 246, 190), (x + 18, y - 42), 3)
+        self._draw_tier_badge(surface, x, y)
+
+    def _draw_wand(self, surface: pygame.Surface, x: int, y: int, recoil: float) -> None:
+        """Little glowing wand that follows the aim direction (visual only)."""
+        hand = Vec(x + (14 if self.aim.x >= 0 else -14), y - 12)
+        length = 20 - 5 * recoil
+        tip = hand + self.aim * length
+        pygame.draw.line(surface, (30, 20, 24), hand, tip, 8)
+        pygame.draw.line(surface, gfx.shade(self.color, 0.75), hand, tip, 6)
+        pygame.draw.line(surface, gfx.tint(self.color, 0.45), hand + Vec(-1, -1), tip + Vec(-1, -1), 2)
+        orb = gfx.sphere(5, gfx.tint(self.color, 0.35), shine=1.0)
+        surface.blit(orb, orb.get_rect(center=(int(tip.x), int(tip.y))))
+        if recoil > 0:
+            glow = gfx.glow(16, (255, 240, 180), 200)
+            surface.blit(glow, glow.get_rect(center=(int(tip.x), int(tip.y))))
+
+    def _draw_tier_badge(self, surface: pygame.Surface, x: int, y: int) -> None:
+        """Tiny plate under the pedestal: path A tier | path B tier (gold = A, cyan = B)."""
+        a, b = self.tiers
+        if a == 0 and b == 0:
+            return
+        plate = pygame.Rect(0, 0, 38, 16)
+        plate.midtop = (x, y + 15)
+        pygame.draw.rect(surface, (30, 20, 12), plate, border_radius=8)
+        pygame.draw.rect(surface, (255, 255, 255), plate, 1, border_radius=8)
+        draw_outlined(surface, str(a), (plate.x + 10, plate.centery), 14, (255, 214, 70), center=True, width=1)
+        draw_outlined(surface, str(b), (plate.right - 10, plate.centery), 14, (120, 210, 255), center=True, width=1)

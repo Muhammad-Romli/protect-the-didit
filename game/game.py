@@ -10,23 +10,27 @@ import pygame
 
 from data.activities import ACTIVITIES, STACKS
 from data.effects import BOLT_SECONDS
-from data.map import MAP_WAYPOINTS, STASH_POS
-from data.settings import (COLORS, DEBUG_KNOWLEDGE, DEBUG_MONEY, FAST_FORWARD_SPEED,
+from data.map import MAP_CORNER_RADIUS, MAP_WAYPOINTS, STASH_POS
+from data.settings import (BOUNTY_MULT, BOUNTY_WAVE_GROWTH, BUILD_RECT, COLORS, DEBUG_KNOWLEDGE, DEBUG_MONEY, FAST_FORWARD_SPEED,
                            INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, PATH_MIN_DISTANCE, PATH_WIDTH, PLAYFIELD_RECT,
                            PREP_GRACE_SECONDS, PREP_MAX_HP_MULT, PREP_MAX_SECONDS,
                            PREP_MAX_SPEED_MULT, SELL_CONFIRM_SECONDS, START_MONEY,
                            START_STASH_HP, TOWER_RADIUS, WAVE_CLEAR_BONUS_BASE,
                            WAVE_CLEAR_BONUS_PER_WAVE)
 from data.towers import TOWER_ORDER, TOWERS
-from data.waves import WAVES
+from data.waves import WAVE_SCALING, WAVES
+from data.enemies import ENEMIES
 from game.effects import EFFECTS
+from game import gfx
 from game.assets import sprite
+from game.scenery import bake_map
 from game.enemy import Enemy
 from game.fx import FX
 from game.projectile import Projectile
+from game import sprites_proc
 from game.tower import Tower
 from game.ui import UI
-from game.utils import Path, Vec, draw_range_circle, draw_text
+from game.utils import Path, Vec, draw_outlined, draw_range_circle, round_corners
 from game.wave_manager import WaveManager
 
 MESSAGE_SECONDS = 2.5
@@ -50,7 +54,8 @@ class Game:
         self.fx = FX()
         self.playfield = pygame.Rect(*PLAYFIELD_RECT)
         self.world = pygame.Surface(self.playfield.size)  # playfield drawn here, then shaken onto the screen
-        self.path = Path(MAP_WAYPOINTS)
+        self.build_rect = pygame.Rect(*BUILD_RECT)
+        self.path = Path(round_corners(MAP_WAYPOINTS, MAP_CORNER_RADIUS))
         self.map_surface = self._render_map()
         self.vignette = self._make_vignette(self.playfield.size)
         self.show_debug = False
@@ -112,7 +117,7 @@ class Game:
         self.battle_hp_mult, self.battle_speed_mult = self.enemy_multipliers()
         stopped = self._stop_all_activities()
         self.waves.start_next()
-        boss = any(kind == "boss" for kind, *_ in WAVES[self.waves.number - 1])
+        boss = any(ENEMIES[kind]["is_boss"] for kind, *_ in WAVES[self.waves.number - 1])
         self.fx.wave_started(self.waves.number, boss)
         if stopped:
             self.flash("Wave started: activities stopped")
@@ -270,6 +275,9 @@ class Game:
         elif name == "speed":
             self.fx.click()
             self._toggle_speed()
+        elif name == "panel":
+            self.fx.click()
+            self.ui.collapsed = not self.ui.collapsed
         elif name == "pause":
             self.fx.click()
             self.paused = not self.paused
@@ -339,7 +347,7 @@ class Game:
     def placement_check(self, kind: str, pos) -> tuple[bool, str]:
         p = Vec(pos)
         margin = TOWER_RADIUS
-        if not self.playfield.inflate(-2 * margin, -2 * margin).collidepoint(pos):
+        if not self.build_rect.inflate(-2 * margin, -2 * margin).collidepoint(pos):
             return False, "Off map"
         if self.path.distance_to(p) < PATH_MIN_DISTANCE:
             return False, "Too close to the path"
@@ -369,7 +377,7 @@ class Game:
     def _tower_at(self, pos) -> Optional[Tower]:
         p = Vec(pos)
         for t in reversed(self.towers):
-            if p.distance_to(t.pos) <= TOWER_RADIUS + 4:
+            if p.distance_to(t.pos + Vec(0, -12)) <= TOWER_RADIUS + 12:
                 return t
         return None
 
@@ -406,7 +414,7 @@ class Game:
 
     # --------------------------------------------------------------- update
     def update(self, dt: float) -> None:
-        self.ui.update(dt, self.money)
+        self.ui.update(dt, self.money, self)
         self.message_timer -= dt
         self.sell_timer -= dt
         if self.message_timer <= 0:
@@ -428,8 +436,7 @@ class Game:
         for kind in self.waves.update(dt):
             if kind == "boss":
                 self.fx.boss_spawned()
-            self.enemies.append(Enemy(kind, self.path, hp_mult=self.battle_hp_mult,
-                                      speed_mult=self.battle_speed_mult))
+            self.spawn_enemy(kind)
         for e in self.enemies:
             e.update(dt)
             if e.slow_timer > 0 and random.random() < dt * 5:
@@ -451,6 +458,21 @@ class Game:
         if self.state == State.PLAYING and self.waves.active \
                 and self.waves.all_spawned and not self.enemies:
             self._finish_wave()
+
+    def spawn_enemy(self, kind: str, distance: float = 0.0, parent: Enemy | None = None) -> Enemy:
+        """Create an enemy for the running wave (wave scaling x preparation penalty). Children of a
+        Trojan inherit the parent's multipliers and money flag."""
+        if parent is not None:
+            e = Enemy(kind, self.path, parent.gives_money, parent.hp_mult, parent.speed_mult, parent.bounty_mult)
+        else:
+            n = max(1, min(self.waves.number, len(WAVE_SCALING)))
+            wave_hp, wave_speed = WAVE_SCALING[n - 1]
+            bounty = BOUNTY_MULT * (1 + BOUNTY_WAVE_GROWTH * (n - 1))
+            e = Enemy(kind, self.path, True, self.battle_hp_mult * wave_hp, self.battle_speed_mult * wave_speed, bounty)
+        e.distance = max(0.0, distance)
+        e.pos = self.path.position_at(e.distance)
+        self.enemies.append(e)
+        return e
 
     def add_money(self, amount: float) -> None:
         """The only place money changes (so the HUD can show +$N / -$N)."""
@@ -503,9 +525,20 @@ class Game:
     def _collect_enemies(self) -> None:
         """Pay bounties for dead enemies, apply stash damage for leakers."""
         remaining: list[Enemy] = []
+        born: list[Enemy] = []
         for e in self.enemies:
             if e.hp <= 0:
                 self.fx.killed(e)
+                if e.spawns:  # Trojan: the hatch opens and its passengers climb out along the path
+                    kind, count = e.spawns
+                    self.fx.trojan_opened(e, count)
+                    for i in range(count):
+                        spread = (i - (count - 1) / 2) * 9
+                        child = Enemy(kind, self.path, e.gives_money, e.hp_mult, e.speed_mult, e.bounty_mult)
+                        child.distance = max(0.0, e.distance + spread)
+                        child.pos = self.path.position_at(child.distance)
+                        child.slow_strength, child.slow_timer = e.slow_strength * 0.5, e.slow_timer
+                        born.append(child)
                 if e.gives_money:
                     self.add_money(e.bounty)
                 if e.is_boss:
@@ -515,7 +548,7 @@ class Game:
                 self.fx.leaked(e, STASH_POS)
             else:
                 remaining.append(e)
-        self.enemies = remaining
+        self.enemies = remaining + born
         if self.stash_hp <= 0:
             self.stash_hp = 0
             self.state = State.LOST
@@ -567,26 +600,7 @@ class Game:
         return 0.6 * (self.battle_hp_mult - 1) / (PREP_MAX_HP_MULT - 1)
 
     def _render_map(self) -> pygame.Surface:
-        surf = pygame.Surface(self.screen.get_size())
-        surf.fill(COLORS["grass"])
-        bg = sprite("background", size=self.playfield.size)
-        if bg is not None:
-            surf.blit(bg, (0, 0))
-        pts = [(int(p.x), int(p.y)) for p in self.path.points]
-        for width, color in ((PATH_WIDTH + 8, COLORS["path_edge"]), (PATH_WIDTH, COLORS["path"])):
-            pygame.draw.lines(surf, color, False, pts, width)
-            for p in pts:  # round the joints so corners have no gaps
-                pygame.draw.circle(surf, color, p, width // 2)
-        sx, sy = STASH_POS
-        stash = pygame.Rect(0, 0, 56, 40)
-        stash.center = (sx, sy + 10)
-        img = sprite("stash", 48)
-        if img is not None:
-            surf.blit(img, img.get_rect(center=stash.center))
-        else:
-            pygame.draw.rect(surf, (150, 100, 40), stash, border_radius=6)
-            pygame.draw.rect(surf, COLORS["gold"], stash, 3, border_radius=6)
-            draw_text(surf, "STASH", stash.center, 20, (255, 240, 200), center=True)
+        surf = bake_map(self.path.points, self.playfield.size, PATH_WIDTH, STASH_POS)
         return surf
 
     def draw(self) -> None:
@@ -596,16 +610,20 @@ class Game:
         self.fx.vfx.draw_ambient(w)
         if self.selected:
             draw_range_circle(w, self.selected.pos, self.selected.stats["range"], (255, 255, 255))
-        for t in self.towers:
-            t.draw(w, t is self.selected)
-        for e in self.enemies:
-            e.draw(w)
+        # depth sorting: all shadows first, then towers + enemies back-to-front by y
+        things = sorted([*self.towers, *self.enemies], key=lambda o: o.pos.y)
+        for o in things:
+            o.draw_shadow(w)
+        for o in things:
+            if isinstance(o, Tower):
+                o.draw(w, o is self.selected)
+            else:
+                o.draw(w)
         for p in self.projectiles:
             p.draw(w)
         self._draw_bolts(w)
         self.fx.vfx.draw(w)
         self._draw_placement_preview(w)
-        self._draw_boss_bar(w)
         s.fill(COLORS["grass"])
         s.blit(w, self.fx.vfx.shake_offset())  # whole playfield shakes, UI stays still
         self.fx.vfx.draw_overlay(s, self.playfield)
@@ -614,15 +632,15 @@ class Game:
         if self.show_debug:
             self._draw_debug()
         if self.paused and self.state == State.PLAYING:
-            draw_text(s, "PAUSED", (500, 300), 72, COLORS["gold"], center=True)
-            draw_text(s, "P to resume", (500, 350), 30, center=True)
+            self._draw_banner_panel("PAUSED", "P or the pause button to resume", COLORS["gold"])
         if self.state != State.PLAYING:
             self._draw_end_screen()
 
     def _draw_stash_glow(self, surface: pygame.Surface) -> None:
         sx, sy = STASH_POS
-        pulse = 3 * math.sin(pygame.time.get_ticks() / 300)
-        pygame.draw.circle(surface, (240, 200, 70), (sx, sy + 10), int(36 + pulse), 2)
+        pulse = 1 + 0.08 * math.sin(pygame.time.get_ticks() / 300)
+        g = gfx.glow(int(64 * pulse), (255, 214, 90), 120)
+        surface.blit(g, g.get_rect(center=(sx, sy)))
 
     def _draw_vignette(self, screen: pygame.Surface) -> None:
         level = self.danger_level()
@@ -640,40 +658,38 @@ class Game:
             pygame.draw.lines(surface, (255, 255, 255), False, pts, 2)
 
     def _draw_placement_preview(self, surface: pygame.Surface) -> None:
-        if not self.placing or not self.playfield.collidepoint(self.mouse_pos):
+        if not self.placing or not self.build_rect.collidepoint(self.mouse_pos) or self.ui.hit_test(self.mouse_pos, self):
             return
         ok, _ = self.placement_check(self.placing, self.mouse_pos)
         color = COLORS["good"] if ok else COLORS["bad"]
         data = TOWERS[self.placing]
+        x, y = self.mouse_pos
         draw_range_circle(surface, self.mouse_pos, data["stats"]["range"], color)
-        pygame.draw.circle(surface, data["color"], self.mouse_pos, TOWER_RADIUS)
-        pygame.draw.circle(surface, color, self.mouse_pos, TOWER_RADIUS, 3)
-
-    def _draw_boss_bar(self, surface: pygame.Surface) -> None:
-        boss = next((e for e in self.enemies if e.is_boss), None)
-        if boss is None:
-            return
-        bar = pygame.Rect(200, 12, 600, 20)
-        pygame.draw.rect(surface, COLORS["hp_bg"], bar)
-        fill = bar.copy()
-        fill.w = int(bar.w * max(0.0, boss.hp) / boss.max_hp)
-        pygame.draw.rect(surface, (220, 60, 60), fill)
-        pygame.draw.rect(surface, (255, 255, 255), bar, 2)
-        draw_text(surface, "BOSS DIDIT", bar.center, 22, center=True)
+        ghost = Tower(self.placing, self.mouse_pos)
+        ox, oy = sprites_proc.tower_origin(TOWER_RADIUS)
+        img = sprites_proc.tower_sprite(self.placing, TOWER_RADIUS, data["color"]).copy()
+        img.set_alpha(190 if ok else 120)
+        surface.blit(img, (x - ox, y - oy))
+        pygame.draw.ellipse(surface, color, (x - 30, y - 14, 60, 30), 3)
 
     def _draw_debug(self) -> None:
         lines = [f"FPS {self.fps:.0f}", f"enemies {len(self.enemies)}",
                  f"projectiles {len(self.projectiles)}", f"towers {len(self.towers)}",
                  f"speed x{self.speed}", f"particles {len(self.fx.vfx.particles)}", f"audio {'on' if self.fx.audio.enabled else 'off'}"]
         for i, line in enumerate(lines):
-            draw_text(self.screen, line, (8, 40 + i * 18), 22, (255, 255, 0))
+            draw_outlined(self.screen, line, (8, 110 + i * 18), 22, (255, 255, 0))
+
+    def _draw_banner_panel(self, title: str, sub: str, color) -> None:
+        dim = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+        dim.fill((10, 8, 20, 150))
+        self.screen.blit(dim, (0, 0))
+        panel = gfx.panel_surface(560, 190)
+        self.screen.blit(panel, panel.get_rect(center=(640, 320)))
+        draw_outlined(self.screen, title, (640, 290), 64, color, center=True, width=4)
+        draw_outlined(self.screen, sub, (640, 358), 28, (255, 255, 255), center=True)
 
     def _draw_end_screen(self) -> None:
-        overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        self.screen.blit(overlay, (0, 0))
-        won = self.state == State.WON
-        cx = self.screen.get_width() // 2
-        draw_text(self.screen, "YOU WIN! The stash is safe." if won else "GAME OVER - the stash is gone",
-                  (cx, 300), 64, COLORS["good"] if won else COLORS["bad"], center=True)
-        draw_text(self.screen, "Press R to restart", (cx, 370), 36, center=True)
+        if self.state == State.WON:
+            self._draw_banner_panel("YOU WIN!", "The stash is safe.  Press R to play again", COLORS["good"])
+        else:
+            self._draw_banner_panel("GAME OVER", "The stash is gone.  Press R to restart", COLORS["bad"])

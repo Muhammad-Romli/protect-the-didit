@@ -10,9 +10,9 @@ python main.py
 
 ## Controls
 - Hotkeys: `1-3` place, `Space` start wave, `P` pause, `F` speed, `Q`/`W` upgrade, `X` sell (press twice).
-- Shop bar (bottom): click Jalu / Romli / Zizi, then click the map to place. RMB / Esc cancels.
+- Tower cards (bottom bar): click Jalu / Romli / Zizi, then click the map to place. RMB / Esc cancels.
 - Click a tower: upgrade panel (Path A / Path B / Sell). Click empty ground to deselect.
-- "Start wave" button, `x1/x2` speed toggle. `R` restarts.
+- Green START button (Space), orange speed button (F), pause button top-right (P). `R` restarts.
 - Debug: `F1` overlay, `F2` +$1000, `F3` skip to next wave.
 
 ## Display

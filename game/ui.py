@@ -1,9 +1,14 @@
-"""UI: shop bar, HUD, upgrade panel. Draws and hit-tests only; Game executes actions.
+"""UI (BTD6-style): floating HUD on top of the map, wooden bottom bar with tower cards,
+slide-in upgrade panel. Draws and hit-tests only; Game executes the actions.
 
 hit_test() returns an action tuple:
-  ("shop", kind) | ("start_wave",) | ("speed",) | ("pause",) | ("activity", act_id)
+  ("shop", kind) | ("start_wave",) | ("speed",) | ("pause",) | ("panel",) | ("activity", act_id)
   | ("upgrade", path) | ("sell",) | ("noop",)
 or None when the click is not on any UI.
+
+Layout (1280x720):  top-left lives + money, top-centre phase banner, top-right round + pause,
+bottom bar: [UPGRADES + progress slot] [tower cards] [speed + start-wave buttons].
+The upgrade panel opens on the side of the screen away from the selected tower.
 """
 from __future__ import annotations
 
@@ -13,36 +18,49 @@ from typing import TYPE_CHECKING
 import pygame
 
 from data.activities import ACTIVITIES, STACKS, activities_for
-from data.settings import (COLORS, INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, MAX_TIER, PANEL_RECT, PREP_GRACE_SECONDS,
-                           PREP_MAX_SECONDS, SHOP_RECT)
-from data.towers import TOWER_ORDER, TOWERS
-from game.utils import draw_text, get_font, wrap_text
+from data.settings import (BAR_RECT, COLORS, INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, MAX_TIER, PREP_GRACE_SECONDS,
+                           PREP_MAX_SECONDS, TOWER_RADIUS)
+from data.towers import DEFAULT_STATS, TOWER_ORDER, TOWERS
+from data.waves import WAVES
+from game import gfx, sprites_proc
+from game.utils import draw_outlined, outlined_text, wrap_text
 
 if TYPE_CHECKING:
     from game.game import Game
 
-PANEL_X = PANEL_RECT[0] + 10
-PANEL_INNER_W = PANEL_RECT[2] - 20
-KNOWLEDGE_COLOR = (120, 200, 230)
-GAIN_COLOR = (130, 255, 150)
-SPEND_COLOR = (255, 120, 120)
+KNOWLEDGE_COLOR = (130, 215, 255)
+GAIN_COLOR = (140, 255, 150)
+SPEND_COLOR = (255, 130, 120)
+GOLD = COLORS["gold"]
 POPUP_SECONDS = 1.1
 POPUP_MERGE_SECONDS = 0.3   # gains inside this window become one "+$N"
 COUNT_UP_SPEED = 9.0        # how fast the shown total catches up with the real one
+PANEL_W = 300
+CARD_W, CARD_H = 94, 78
+SLIDE_SPEED = 7.0           # panel slide-in, 1/seconds
 
 
 class UI:
     def __init__(self) -> None:
-        self.panel = pygame.Rect(*PANEL_RECT)
-        self.shop = pygame.Rect(*SHOP_RECT)
-        self.start_btn = pygame.Rect(PANEL_X, 184, 150, 44)
-        self.speed_btn = pygame.Rect(PANEL_X + 156, 184, 52, 44)
-        self.pause_btn = pygame.Rect(PANEL_X + 214, 184, 46, 44)
-        self.upgrade_btns = [pygame.Rect(PANEL_X, 332, PANEL_INNER_W, 134),
-                             pygame.Rect(PANEL_X, 472, PANEL_INNER_W, 134)]
-        self.sell_btn = pygame.Rect(PANEL_X, 612, PANEL_INNER_W, 28)
-        self.shop_btns = {k: pygame.Rect(20 + i * 215, 650, 200, 62)
+        self.bar = pygame.Rect(*BAR_RECT)
+        self.upgrades_btn = pygame.Rect(18, 640, 214, 44)
+        self.slot = pygame.Rect(18, 690, 214, 22)
+        x0 = 640 - (3 * CARD_W + 2 * 14) // 2
+        self.shop_btns = {k: pygame.Rect(x0 + i * (CARD_W + 14), 641, CARD_W, CARD_H)
                           for i, k in enumerate(TOWER_ORDER)}
+        self.speed_btn = pygame.Rect(1048, 644, 84, 66)
+        self.start_btn = pygame.Rect(1142, 644, 126, 66)
+        self.gear_btn = pygame.Rect(1214, 10, 58, 58)
+        # upgrade panel (geometry is rebuilt by layout() for the selected tower)
+        self.panel = pygame.Rect(0, 0, 0, 0)
+        self.upgrade_btns = [pygame.Rect(0, 0, 0, 0), pygame.Rect(0, 0, 0, 0)]
+        self.sell_btn = pygame.Rect(0, 0, 0, 0)
+        self._act_rects: list[tuple[str, pygame.Rect]] = []
+        self.panel_open = False      # target of the slide animation (tower selected and not collapsed)
+        self.collapsed = False       # the UPGRADES button hides the panel
+        self.slide = 0.0             # 0 = off-screen, 1 = fully in
+        self.panel_side = "right"
+        self._last_selected = None
         # money display: counts up/down to the real total, with +$N / -$N popups beside it
         self.shown_money: float | None = None
         self.pulse = 0.0
@@ -50,6 +68,7 @@ class UI:
         self._pending = {"gain": 0.0, "spend": 0.0}
         self._pending_timer = {"gain": 0.0, "spend": 0.0}
 
+    # ------------------------------------------------------------- money fx
     def money_change(self, amount: float) -> None:
         """Called by Game for every earning (+) or spending (-)."""
         kind = "gain" if amount > 0 else "spend"
@@ -57,37 +76,72 @@ class UI:
             self._pending_timer[kind] = POPUP_MERGE_SECONDS
         self._pending[kind] += abs(amount)
 
-    def update(self, dt: float, money: float) -> None:
+    def update(self, dt: float, money: float, game: "Game | None" = None) -> None:
         if self.shown_money is None:
             self.shown_money = money
         diff = money - self.shown_money
         self.shown_money = money if abs(diff) < 0.6 else self.shown_money + diff * min(1.0, dt * COUNT_UP_SPEED)
         self.pulse = max(0.0, self.pulse - dt * 3)
-        for kind, color in ("gain", GAIN_COLOR), ("spend", SPEND_COLOR):
+        for kind in ("gain", "spend"):
             if self._pending[kind] > 0:
                 self._pending_timer[kind] -= dt
                 if self._pending_timer[kind] <= 0:
                     value = round(self._pending[kind])
                     if value > 0:
-                        self.popups.append([f"{'+' if kind == 'gain' else '-'}${value}", color, 0.0])
+                        sign, color = ("+", GAIN_COLOR) if kind == "gain" else ("-", SPEND_COLOR)
+                        self.popups.append([f"{sign}${value}", color, 0.0])
                         if kind == "gain":
                             self.pulse = 1.0
                     self._pending[kind] = 0.0
         for p in self.popups:
             p[2] += dt
         self.popups = [p for p in self.popups if p[2] < POPUP_SECONDS]
+        if game is not None:
+            self.layout(game)
+            step = SLIDE_SPEED * dt
+            self.slide = min(1.0, self.slide + step) if self.panel_open else max(0.0, self.slide - step)
+            self.layout(game)
+
+    # --------------------------------------------------------------- layout
+    def layout(self, game: "Game") -> None:
+        """Rebuild the panel rectangles for the selected tower (every frame and before hit tests)."""
+        t = game.selected
+        if t is not self._last_selected:
+            self._last_selected = t
+            self.collapsed = False
+            if t is not None:
+                self.panel_side = "left" if t.pos.x > 640 else "right"
+                if self.slide > 0.5:
+                    self.slide = 0.35  # switching towers: quick re-slide
+        self.panel_open = t is not None and not self.collapsed
+        if t is None:
+            return
+        acts = activities_for(t.kind)
+        h = 18 + 52 + 6 + 36 + 8 + (54 if acts else 0) + 2 * 150 + 8 + 10 + 38 + 18
+        ease = 1 - (1 - self.slide) ** 3
+        home = 14 if self.panel_side == "left" else 1280 - PANEL_W - 14
+        off = -(PANEL_W + 40) if self.panel_side == "left" else (PANEL_W + 40)
+        self.panel = pygame.Rect(round(home + off * (1 - ease)), 76, PANEL_W, h)
+        x, y = self.panel.x + 20, self.panel.y + 18 + 52 + 6 + 36 + 8
+        w = PANEL_W - 40
+        self._act_rects = []
+        if acts:
+            gap = 6
+            aw = (w - gap * (len(acts) - 1)) // len(acts)
+            self._act_rects = [(a, pygame.Rect(x + i * (aw + gap), y, aw, 46)) for i, (a, _) in enumerate(acts)]
+            y += 54
+        self.upgrade_btns = [pygame.Rect(x, y, w, 150), pygame.Rect(x, y + 158, w, 150)]
+        self.sell_btn = pygame.Rect(x, y + 318, w, 38)
 
     def activity_rects(self, tower_kind: str) -> list[tuple[str, pygame.Rect]]:
-        """One button per activity the tower can run, splitting the panel width."""
-        acts = activities_for(tower_kind)
-        n = max(1, len(acts))
-        gap = 6
-        w = (PANEL_INNER_W - gap * (n - 1)) // n
-        return [(act_id, pygame.Rect(PANEL_X + i * (w + gap), 282, w, 44))
-                for i, (act_id, _) in enumerate(acts)]
+        """One button per activity the selected tower can run (valid after layout())."""
+        return self._act_rects
 
     # ------------------------------------------------------------- hit test
     def hit_test(self, pos, game: "Game"):
+        self.layout(game)
+        if self.gear_btn.collidepoint(pos):
+            return ("pause",)
         for kind, rect in self.shop_btns.items():
             if rect.collidepoint(pos):
                 return ("shop", kind)
@@ -95,10 +149,10 @@ class UI:
             return ("start_wave",)
         if self.speed_btn.collidepoint(pos):
             return ("speed",)
-        if self.pause_btn.collidepoint(pos):
-            return ("pause",)
-        if game.selected is not None:
-            for act_id, rect in self.activity_rects(game.selected.kind):
+        if self.upgrades_btn.collidepoint(pos):
+            return ("panel",)
+        if game.selected is not None and (self.panel_open or self.slide > 0.02):
+            for act_id, rect in self._act_rects:
                 if rect.collidepoint(pos):
                     return ("activity", act_id)
             for i, rect in enumerate(self.upgrade_btns):
@@ -106,120 +160,227 @@ class UI:
                     return ("upgrade", i)
             if self.sell_btn.collidepoint(pos):
                 return ("sell",)
-        if self.panel.collidepoint(pos) or self.shop.collidepoint(pos):
+            if self.panel.collidepoint(pos):
+                return ("noop",)
+        if self.bar.collidepoint(pos):
             return ("noop",)
         return None
 
     # ----------------------------------------------------------------- draw
     def draw(self, surface: pygame.Surface, game: "Game") -> None:
-        pygame.draw.rect(surface, COLORS["ui_bg"], self.panel)
-        pygame.draw.rect(surface, COLORS["ui_bg"], self.shop)
-        pygame.draw.line(surface, (70, 74, 90), self.shop.topleft, self.shop.topright, 2)
-        pygame.draw.line(surface, (70, 74, 90), self.panel.topleft, self.panel.bottomleft, 2)
+        self.layout(game)
         self._draw_hud(surface, game)
-        self._draw_shop(surface, game)
-        if game.selected is not None:
+        self._draw_banner(surface, game)
+        self._draw_boss_bars(surface, game)
+        if game.selected is not None and self.slide > 0.01:
             self._draw_tower_panel(surface, game)
-        else:
-            draw_text(surface, "Select a tower to upgrade", (PANEL_X, 290), 22, COLORS["text_dim"])
-        if game.message:
-            for i, line in enumerate(wrap_text(game.message, 20, PANEL_INNER_W)[:2]):
-                draw_text(surface, line, (PANEL_X, 646 + i * 18), 20, COLORS["gold"])
-        for i, line in enumerate(("1-3 place  Space wave  P pause", "F speed  Q/W upgrade  X sell", "M mute  F11 fullscreen  R restart")):
-            draw_text(surface, line, (PANEL_X, 684 + i * 13), 15, COLORS["text_dim"])
+        self._draw_bar(surface, game)
+        self._draw_toast(surface, game)
+        self._draw_tooltip(surface, game)
 
-    def _button(self, surface, rect, enabled=True, hover_pos=None) -> None:
-        if not enabled:
-            color = COLORS["ui_btn_off"]
-        elif hover_pos is not None and rect.collidepoint(hover_pos):
-            color = COLORS["ui_btn_hover"]
-        else:
-            color = COLORS["ui_btn"]
-        pygame.draw.rect(surface, color, rect, border_radius=6)
-        pygame.draw.rect(surface, (90, 94, 110), rect, 1, border_radius=6)
+    def _btn(self, surface, rect, base, game, enabled=True, radius=12, border=(255, 255, 255), pressed=False):
+        hover = enabled and rect.collidepoint(game.mouse_pos)
+        state = "off" if not enabled else "pressed" if pressed else "hover" if hover else "normal"
+        surface.blit(gfx.glossy(rect.w, rect.h, base, radius, border, state), (rect.x - 1, rect.y - 1))
+        return hover
 
+    @staticmethod
+    def _portrait(kind: str, color) -> pygame.Surface:
+        key = ("portrait", kind)
+        if key not in gfx._CACHE:
+            spr = sprites_proc.tower_sprite(kind, TOWER_RADIUS, color)
+            gfx._CACHE[key] = pygame.transform.smoothscale(spr, (round(spr.get_width() * 50 / spr.get_height()), 50))
+        return gfx._CACHE[key]
+
+    # --------------------------------------------------------------- top HUD
     def _draw_hud(self, surface, game: "Game") -> None:
-        self._draw_money(surface, game)
-        hp_color = COLORS["good"] if game.stash_hp > 30 else COLORS["bad"]
-        draw_text(surface, f"Stash HP: {game.stash_hp}", (PANEL_X, 42), 28, hp_color)
-        draw_text(surface, f"Wave: {game.waves.number}/{game.waves.total}", (PANEL_X, 68), 28)
-        self._draw_phase(surface, game)
-
-        can = game.waves.can_start
-        self._button(surface, self.start_btn, can, game.mouse_pos)
-        if game.waves.active:
-            label = "Wave running..."
-        elif can:
-            label = f"Start wave {game.waves.number + 1}"
-        else:
-            label = "All waves done"
-        draw_text(surface, label, self.start_btn.center, 22,
-                  COLORS["text"] if can else COLORS["text_dim"], center=True)
-        self._button(surface, self.speed_btn, True, game.mouse_pos)
-        draw_text(surface, f"x{game.speed}", self.speed_btn.center, 28, center=True)
-        self._button(surface, self.pause_btn, True, game.mouse_pos)
-        draw_text(surface, ">" if game.paused else "II", self.pause_btn.center, 28,
-                  COLORS["gold"] if game.paused else COLORS["text"], center=True)
-
-    def _draw_money(self, surface, game: "Game") -> None:
+        surface.blit(gfx.icon("heart", 46), (10, 8))  # lives
+        low = game.stash_hp <= 30
+        draw_outlined(surface, str(game.stash_hp), (62, 30), 38, COLORS["bad"] if low else (255, 255, 255),
+                      anchor="midleft", width=3)
+        surface.blit(gfx.icon("coin", 46), (172, 8))  # money (+ popups)
         shown = int(self.shown_money if self.shown_money is not None else game.money)
-        size = 34 + int(6 * self.pulse)  # little bump while a gain is being absorbed
-        t = self.pulse
-        color = tuple(int(g + (w - g) * t) for g, w in zip(COLORS["gold"], (255, 255, 255)))
-        label = f"Money: ${shown}"
-        draw_text(surface, label, (PANEL_X, 10 - (size - 34) // 2), size, color)
-        x = PANEL_X + get_font(34).size(f"Money: ${shown}")[0] + 14
+        size = 38 + int(7 * self.pulse)
+        r = draw_outlined(surface, f"${shown}", (226, 30), size, GOLD if self.pulse < 0.01 else (255, 255, 255),
+                          anchor="midleft", width=3)
         for text, col, age in self.popups:
             f = age / POPUP_SECONDS
-            img = get_font(26 + int(6 * max(0.0, 1 - f * 5))).render(text, True, col)
+            img = outlined_text(text, 28 + int(6 * max(0.0, 1 - f * 5)), col, COLORS["ink"], 2).copy()
             if f > 0.6:
                 img.set_alpha(int(255 * (1 - f) / 0.4))
-            surface.blit(img, (min(x, PANEL_X + PANEL_INNER_W - img.get_width()), 14 - int(10 * f)))
+            surface.blit(img, (r.right + 10, 14 - int(10 * f)))
+        surface.blit(gfx.icon("brain", 28), (14, 58))  # ball knowledge + activity slots
+        draw_outlined(surface, str(game.ball_knowledge), (48, 72), 24, KNOWLEDGE_COLOR, anchor="midleft")
+        used = game.activity_slots_used()
+        draw_outlined(surface, f"Activities {used}/{MAX_ACTIVITIES}", (112, 72), 20,
+                      GOLD if used else COLORS["text_dim"], anchor="midleft")
+        total = game.waves.total  # round + pause (top-right)
+        n = min(total, game.waves.number if game.waves.active else game.waves.number + 1)
+        draw_outlined(surface, "ROUND", (1204, 8), 20, (255, 255, 255), anchor="topright")
+        draw_outlined(surface, f"{n}/{total}", (1204, 24), 40, (255, 255, 255), anchor="topright", width=3)
+        self._btn(surface, self.gear_btn, COLORS["btn_blue"], game, pressed=game.paused)
+        surface.blit(gfx.icon("play" if game.paused else "pause", 36), (self.gear_btn.x + 11, self.gear_btn.y + 10))
 
-    def _draw_phase(self, surface, game: "Game") -> None:
+    def _draw_banner(self, surface, game: "Game") -> None:
+        """Top-centre: phase, timer and how strong the wave is."""
         hp_mult, speed_mult = game.enemy_multipliers()
-        strength = f"x{hp_mult:.1f} HP, +{round((speed_mult - 1) * 100)}% speed"
+        w, h = 330, 58
+        rect = pygame.Rect(640 - w // 2, 8, w, h)
+        surface.blit(gfx.pill(w, h), rect)
+        strength = f"x{hp_mult:.1f} HP  +{round((speed_mult - 1) * 100)}% speed"
         if game.phase.value == "battle":
-            draw_text(surface, "BATTLE", (PANEL_X, 98), 28, COLORS["bad"])
-            draw_text(surface, f"This wave: {strength}", (PANEL_X, 128), 20, COLORS["text_dim"])
+            left = len(game.enemies) + len(game.waves._queue)
+            draw_outlined(surface, f"WAVE {game.waves.number}  -  {left} left", (rect.centerx, rect.y + 17), 26,
+                          COLORS["bad"], center=True)
+            draw_outlined(surface, f"Wait penalty: {strength}", (rect.centerx, rect.y + 42), 17,
+                          COLORS["text_dim"], center=True, width=1)
         else:
             t = int(game.prep_time)
             mx = PREP_MAX_SECONDS
-            draw_text(surface, f"PREPARATION  {t // 60}:{t % 60:02d} / {mx // 60}:{mx % 60:02d}",
-                      (PANEL_X, 98), 26, COLORS["gold"])
-            bar = pygame.Rect(PANEL_X, 124, PANEL_INNER_W, 8)
-            pygame.draw.rect(surface, (60, 62, 74), bar)
+            draw_outlined(surface, f"PREPARATION  {t // 60}:{t % 60:02d} / {mx // 60}:{mx % 60:02d}",
+                          (rect.centerx, rect.y + 17), 24, GOLD, center=True)
+            draw_outlined(surface, f"Next wave: {strength}", (rect.centerx, rect.y + 42), 17,
+                          COLORS["bad"] if game.prep_ramp() > 0 else COLORS["text_dim"], center=True, width=1)
+
+    def _draw_boss_bars(self, surface, game: "Game") -> None:
+        y = 76
+        for boss in [e for e in game.enemies if e.is_boss][:2]:
+            bar = pygame.Rect(640 - 260, y, 520, 24)
+            pygame.draw.rect(surface, (30, 14, 14), bar.inflate(8, 8), border_radius=14)
+            pygame.draw.rect(surface, COLORS["hp_bg"], bar, border_radius=11)
             fill = bar.copy()
-            fill.w = int(bar.w * min(1.0, game.prep_time / mx))
-            r = game.prep_ramp()
-            color = (int(110 + 125 * r), int(220 - 130 * r), 90)  # green -> red as it escalates
-            pygame.draw.rect(surface, color, fill)
-            grace_x = bar.x + int(bar.w * PREP_GRACE_SECONDS / mx)
-            pygame.draw.line(surface, (255, 255, 255), (grace_x, bar.y - 2), (grace_x, bar.bottom + 1), 1)
-            draw_text(surface, f"Next wave: {strength}", (PANEL_X, 136), 20,
-                      COLORS["bad"] if r > 0 else COLORS["text_dim"])
-        used = game.activity_slots_used()
-        draw_text(surface, f"Activities: {used}/{MAX_ACTIVITIES}", (PANEL_X, 158), 22,
-                  COLORS["gold"] if used else COLORS["text_dim"])
-        know = f"Knowledge: {game.ball_knowledge}"
-        w = get_font(22).size(know)[0]
-        draw_text(surface, know, (PANEL_X + PANEL_INNER_W - w, 158), 22, KNOWLEDGE_COLOR)
+            fill.w = max(6, int(bar.w * max(0.0, boss.hp) / boss.max_hp))
+            pygame.draw.rect(surface, (230, 64, 64), fill, border_radius=11)
+            pygame.draw.rect(surface, (255, 150, 140), (fill.x + 4, fill.y + 3, max(0, fill.w - 8), 5), border_radius=3)
+            pygame.draw.rect(surface, (255, 255, 255), bar, 2, border_radius=11)
+            draw_outlined(surface, boss.name.upper(), bar.center, 20, center=True, width=2)
+            y += 38
 
-    def _draw_shop(self, surface, game: "Game") -> None:
+    # ------------------------------------------------------------ bottom bar
+    def _draw_bar(self, surface, game: "Game") -> None:
+        surface.blit(gfx.wood(self.bar.w, self.bar.h), self.bar.topleft)
+        pygame.draw.line(surface, (255, 222, 160), (0, self.bar.y + 3), (self.bar.w, self.bar.y + 3), 1)
+        sel = game.selected is not None  # UPGRADES button: shows / hides the panel
+        shown = sel and self.panel_open
+        self._btn(surface, self.upgrades_btn, COLORS["btn_green"], game, enabled=sel, pressed=shown)
+        col = (255, 255, 255) if sel else (205, 208, 218)
+        draw_outlined(surface, "UPGRADES", (self.upgrades_btn.centerx + 12, self.upgrades_btn.centery - 1), 27, col, center=True)
+        cx, cy = self.upgrades_btn.x + 30, self.upgrades_btn.centery
+        d = 1 if shown else -1  # arrow points down while the panel is open
+        pygame.draw.polygon(surface, col, [(cx - 9, cy - 4 * d), (cx + 9, cy - 4 * d), (cx, cy + 5 * d)])
+        self._draw_slot(surface, game)
         for i, (kind, rect) in enumerate(self.shop_btns.items()):
-            d = TOWERS[kind]
-            affordable = game.money >= d["cost"]
-            self._button(surface, rect, affordable, game.mouse_pos)
-            if game.placing == kind:
-                pygame.draw.rect(surface, COLORS["good"], rect, 3, border_radius=6)
-            pygame.draw.circle(surface, d["color"], (rect.x + 30, rect.centery), 18)
-            draw_text(surface, d["name"][0], (rect.x + 30, rect.centery), 26, (15, 15, 25), center=True)
-            draw_text(surface, f"{d['name']}  [{i + 1}]", (rect.x + 58, rect.y + 10), 28,
-                      COLORS["text"] if affordable else COLORS["text_dim"])
-            draw_text(surface, f"${d['cost']}", (rect.x + 58, rect.y + 36), 26,
-                      COLORS["gold"] if affordable else COLORS["bad"])
+            self._draw_card(surface, game, kind, rect, i + 1)
+        fast = game.speed > 1  # orange: speed, green: start the wave
+        self._btn(surface, self.speed_btn, COLORS["btn_orange"], game, pressed=fast)
+        surface.blit(gfx.icon("ff", 34), (self.speed_btn.x + 25, self.speed_btn.y + 5))
+        draw_outlined(surface, f"x{game.speed}", (self.speed_btn.centerx, self.speed_btn.bottom - 15), 22, center=True)
+        can = game.waves.can_start and not game.waves.active
+        self._btn(surface, self.start_btn, COLORS["btn_green"], game, enabled=can)
+        surface.blit(gfx.icon("play", 40), (self.start_btn.x + 8, self.start_btn.y + 12))
+        if game.waves.active:
+            label, sub = "RUNNING", None
+        elif can:
+            label, sub = "START", f"wave {game.waves.number + 1}"
+        else:
+            label, sub = "DONE", None
+        cx = self.start_btn.x + 82
+        draw_outlined(surface, label, (cx, self.start_btn.centery - (8 if sub else 0)), 23,
+                      (255, 255, 255) if can else (205, 208, 218), center=True)
+        if sub:
+            draw_outlined(surface, sub, (cx, self.start_btn.centery + 14), 17, (255, 255, 255), center=True, width=1)
 
-    # ---------------------------------------------------------- tower panel
+    def _draw_slot(self, surface, game: "Game") -> None:
+        """Recessed wooden slot: escalation timer in preparation, spawn progress in battle."""
+        r = self.slot
+        pygame.draw.rect(surface, (52, 32, 18), r.inflate(4, 4), border_radius=9)
+        pygame.draw.rect(surface, (34, 20, 12), r, border_radius=8)
+        grace_x = None
+        if game.phase.value == "preparation":
+            frac = min(1.0, game.prep_time / PREP_MAX_SECONDS)
+            ramp = game.prep_ramp()
+            color = (int(110 + 125 * ramp), int(220 - 130 * ramp), 80)
+            label = "Prepare" if ramp <= 0 else "Enemies growing!"
+            grace_x = r.x + int(r.w * PREP_GRACE_SECONDS / PREP_MAX_SECONDS)
+        else:
+            total = max(1, sum(g[1] for g in WAVES[game.waves.number - 1]))
+            frac = 1.0 - len(game.waves._queue) / total
+            color, label = (240, 150, 60), "Spawning"
+        if frac > 0:
+            fill = pygame.Rect(r.x + 2, r.y + 2, max(10, int((r.w - 4) * frac)), r.h - 4)
+            pygame.draw.rect(surface, color, fill, border_radius=6)
+            pygame.draw.rect(surface, gfx.tint(color, 0.5), (fill.x + 3, fill.y + 2, max(0, fill.w - 6), 4), border_radius=3)
+        if grace_x is not None:
+            pygame.draw.line(surface, (255, 255, 255), (grace_x, r.y + 1), (grace_x, r.bottom - 2), 2)
+        draw_outlined(surface, label, r.center, 16, center=True, width=1)
+
+    def _draw_card(self, surface, game: "Game", kind: str, rect: pygame.Rect, number: int) -> None:
+        d = TOWERS[kind]
+        affordable = game.money >= d["cost"]
+        placing = game.placing == kind
+        hover = rect.collidepoint(game.mouse_pos)
+        state = "off" if not affordable else "pressed" if placing else "hover" if hover else "normal"
+        lift = 3 if hover and affordable and not placing else 0
+        surface.blit(gfx.glossy(rect.w, rect.h, (70, 150, 232), 12, (255, 255, 255), state), (rect.x - 1, rect.y - 1 - lift))
+        port = self._portrait(kind, d["color"])
+        if not affordable:
+            port = port.copy()
+            port.fill((130, 130, 130, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        surface.blit(port, port.get_rect(midtop=(rect.centerx, rect.y + 6 - lift)))
+        plate = pygame.Rect(0, 0, rect.w - 14, 20)  # price plate
+        plate.midbottom = (rect.centerx, rect.bottom - 6 - lift)
+        pygame.draw.rect(surface, (28, 18, 12), plate, border_radius=10)
+        draw_outlined(surface, f"${d['cost']}", plate.center, 19, GOLD if affordable else COLORS["bad"],
+                      center=True, width=1)
+        pygame.draw.circle(surface, (28, 18, 12), (rect.x + 14, rect.y + 14 - lift), 10)  # hotkey badge
+        draw_outlined(surface, str(number), (rect.x + 14, rect.y + 14 - lift), 17, (255, 255, 255), center=True, width=1)
+        if placing:
+            pulse = 3 + 2 * math.sin(pygame.time.get_ticks() / 140)
+            pygame.draw.rect(surface, GOLD, rect.inflate(pulse, pulse), 3, border_radius=14)
+
+    def _draw_toast(self, surface, game: "Game") -> None:
+        text, dim = game.message, False
+        if not text and game.placing:
+            d = TOWERS[game.placing]
+            text = f"Placing {d['name']} (${d['cost']}) - click the map, right-click to cancel"
+        if not text and game.selected is None:
+            text, dim = "1-3 place   Space start   P pause   F speed   Q/W upgrade   X sell   M mute   F11 fullscreen", True
+        if not text:
+            return
+        img = outlined_text(text, 20 if dim else 24, COLORS["text_dim"] if dim else GOLD, COLORS["ink"], 2)
+        plate = img.get_rect(midbottom=(640, self.bar.y - 8)).inflate(30, 10)
+        surface.blit(gfx.pill(plate.w, plate.h, alpha=110 if dim else 190), plate)
+        surface.blit(img, img.get_rect(center=plate.center))
+
+    def _draw_tooltip(self, surface, game: "Game") -> None:
+        if game.placing is not None:
+            return
+        for kind, rect in self.shop_btns.items():
+            if rect.collidepoint(game.mouse_pos):
+                d = TOWERS[kind]
+                w = 300
+                body = wrap_text(self._base_stats(d["stats"]), 18, w - 28)
+                tip = pygame.Rect(0, 0, w, 56 + 20 * len(body))
+                tip.midbottom = (min(1280 - w // 2 - 8, max(w // 2 + 8, rect.centerx)), self.bar.y - 52)
+                surface.blit(gfx.panel_surface(w, tip.h, 12), (tip.x - 2, tip.y - 2))
+                draw_outlined(surface, d["name"], (tip.x + 16, tip.y + 14), 24, GOLD)
+                for i, line in enumerate(body):
+                    draw_outlined(surface, line, (tip.x + 16, tip.y + 44 + i * 20), 18, (255, 255, 255), width=1)
+                return
+
+    @staticmethod
+    def _base_stats(stats: dict) -> str:
+        s = {**DEFAULT_STATS, **stats}
+        parts = [f"Dmg {s['damage']:g}", f"CD {s['cooldown']:.1f}s", f"Range {s['range']:g}"]
+        if s["aoe_radius"]:
+            parts.append(f"AoE {s['aoe_radius']:g}")
+        if s["slow"]:
+            parts.append(f"Slow {round(s['slow'] * 100)}%")
+        if s["income_per_wave"]:
+            parts.append(f"+${s['income_per_wave']:g}/wave")
+        return "  ".join(parts)
+
+    # ----------------------------------------------------------- tower panel
     @staticmethod
     def _stats_text(t) -> str:
         s = t.stats
@@ -238,23 +399,27 @@ class UI:
 
     def _draw_tower_panel(self, surface, game: "Game") -> None:
         t = game.selected
-        draw_text(surface, f"{t.name}  (A:{t.tiers[0]}  B:{t.tiers[1]})", (PANEL_X, 232), 26)
-        for i, line in enumerate(wrap_text(self._stats_text(t), 18, PANEL_INNER_W)[:2]):
-            draw_text(surface, line, (PANEL_X, 254 + i * 14), 18, COLORS["text_dim"])
+        p = self.panel
+        surface.blit(gfx.panel_surface(p.w, p.h), (p.x - 2, p.y - 2))
+        x = p.x + 20
+        surface.blit(self._portrait(t.kind, t.color), (x - 4, p.y + 18))
+        draw_outlined(surface, t.name, (x + 50, p.y + 22), 32, (255, 255, 255), width=3)
+        draw_outlined(surface, f"Path A tier {t.tiers[0]}   Path B tier {t.tiers[1]}", (x + 50, p.y + 54), 16,
+                      COLORS["text_dim"], width=1)
+        for i, line in enumerate(wrap_text(self._stats_text(t), 16, PANEL_W - 40)[:2]):
+            draw_outlined(surface, line, (x, p.y + 18 + 52 + 6 + i * 17), 16, (225, 235, 255), width=1)
         self._draw_activity_buttons(surface, game)
         for i, rect in enumerate(self.upgrade_btns):
-            self._draw_upgrade_button(surface, game, i, rect)
+            self._draw_upgrade_card(surface, game, i, rect)
         confirming = game.sell_pending is t and game.sell_timer > 0
-        self._button(surface, self.sell_btn, True, game.mouse_pos)
-        if confirming:
-            pygame.draw.rect(surface, COLORS["bad"], self.sell_btn, 2, border_radius=6)
-        draw_text(surface, f"Confirm sell?  +${t.sell_value}" if confirming else f"Sell  +${t.sell_value}",
-                  self.sell_btn.center, 24, COLORS["bad"] if confirming else COLORS["text"], center=True)
+        self._btn(surface, self.sell_btn, COLORS["btn_red"], game, pressed=confirming)
+        draw_outlined(surface, f"SURE?  +${t.sell_value}" if confirming else f"SELL  +${t.sell_value}",
+                      self.sell_btn.center, 24, center=True)
 
     def _draw_activity_buttons(self, surface, game: "Game") -> None:
         t = game.selected
         prep = game.phase.value == "preparation"
-        for act_id, rect in self.activity_rects(t.kind):
+        for act_id, rect in self._act_rects:
             data = ACTIVITIES[act_id]
             running = t.activity == act_id
             kind, arg = data["gives"]
@@ -265,66 +430,65 @@ class UI:
                 used -= 1
             slot_free = (not data["counts_toward_limit"]) or used < MAX_ACTIVITIES
             usable = running or (not lock and prep and slot_free and not maxed)
-            self._button(surface, rect, usable, game.mouse_pos)
-            if running:
-                draw_text(surface, f"Stop {data['name']}", (rect.x + 6, rect.y + 5), 20, COLORS["gold"])
-                frac = min(1.0, t.activity_acc / data["interval"])
-                pygame.draw.rect(surface, (30, 32, 40), (rect.x + 6, rect.bottom - 8, rect.w - 12, 4))
-                pygame.draw.rect(surface, COLORS["gold"],
-                                 (rect.x + 6, rect.bottom - 8, int((rect.w - 12) * frac), 4))
-            else:
-                draw_text(surface, f"Start {data['name']}", (rect.x + 6, rect.y + 5), 20,
-                          COLORS["text"] if usable else COLORS["text_dim"])
+            self._btn(surface, rect, COLORS["btn_orange"] if running else (70, 150, 232), game, usable, 10, pressed=running)
+            draw_outlined(surface, f"{'Stop' if running else 'Start'} {data['name']}", (rect.centerx, rect.y + 14), 19,
+                          (255, 255, 255) if usable else (205, 208, 218), center=True, width=1)
             if kind == "stack":
                 info = f"{STACKS[arg]['label']} {t.stacks.get(arg, 0)}/{STACKS[arg]['max']}"
                 color = STACKS[arg]["color"]
             else:
                 info, color = f"+{arg} knowledge / {data['interval']:g}s", KNOWLEDGE_COLOR
             if not running and not usable:
-                color = COLORS["text_dim"]
+                color = (205, 208, 218)
                 info = (f"Needs {lock}" if lock else "Maxed" if maxed else
                         "Preparation only" if not prep else "No free slot")
-            draw_text(surface, info, (rect.x + 6, rect.y + 23), 18, color)
+            draw_outlined(surface, info, (rect.centerx, rect.y + 32), 15, color, center=True, width=1)
+            if running:
+                frac = min(1.0, t.activity_acc / data["interval"])
+                pygame.draw.rect(surface, (60, 30, 10), (rect.x + 10, rect.bottom - 8, rect.w - 20, 4), border_radius=2)
+                pygame.draw.rect(surface, (255, 240, 160), (rect.x + 10, rect.bottom - 8, int((rect.w - 20) * frac), 4), border_radius=2)
 
-    def _draw_upgrade_button(self, surface, game: "Game", path: int, rect: pygame.Rect) -> None:
+    def _draw_upgrade_card(self, surface, game: "Game", path: int, rect: pygame.Rect) -> None:
         t = game.selected
-        path_name = t.data["paths"][path]["name"]
         up = t.next_upgrade(path)
         ok, reason = t.can_upgrade(path)
         cost = game.upgrade_cost(t, up) if up else 0
         afford_money = up is not None and game.money >= cost
         afford_know = up is not None and game.ball_knowledge >= up["knowledge"]
-        self._button(surface, rect, ok and afford_money and afford_know, game.mouse_pos)
-
-        x, y = rect.x + 8, rect.y + 6
-        key = "QW"[path]
-        draw_text(surface, f"{'AB'[path]}: {path_name}  {t.tiers[path]}/{MAX_TIER}  [{key}]", (x, y), 24)
+        buyable = up is not None and ok and afford_money and afford_know
+        plate = gfx.blank(rect.w, rect.h)
+        pygame.draw.rect(plate, (255, 255, 255, 26), (0, 0, rect.w, rect.h), border_radius=12)
+        pygame.draw.rect(plate, (130, 240, 110, 190) if buyable else (255, 255, 255, 60), (0, 0, rect.w, rect.h), 2, border_radius=12)
+        surface.blit(plate, rect.topleft)
+        x, y = rect.x + 12, rect.y + 8
+        draw_outlined(surface, f"{'AB'[path]}  {t.data['paths'][path]['name']}  [{'QW'[path]}]", (x, y), 20, (255, 255, 255), width=2)
+        for i in range(MAX_TIER):  # tier pips
+            c = (rect.right - 18 - (MAX_TIER - 1 - i) * 17, y + 36)
+            pygame.draw.circle(surface, (20, 14, 30), c, 7)
+            pygame.draw.circle(surface, GOLD if i < t.tiers[path] else (70, 80, 120), c, 5)
+            if i < t.tiers[path]:
+                pygame.draw.circle(surface, (255, 248, 190), (c[0] - 1, c[1] - 1), 2)
         if up is None:
-            draw_text(surface, "MAX TIER", (x, y + 26), 24, COLORS["good"])
+            draw_outlined(surface, "MAX TIER", (rect.centerx, rect.centery + 8), 28, COLORS["good"], center=True, width=3)
             return
-        draw_text(surface, up["name"], (x, y + 22), 24, COLORS["gold"])
-        money_lbl = f"${cost}"
-        draw_text(surface, money_lbl, (x, y + 42), 22, COLORS["gold"] if afford_money else COLORS["bad"])
-        if cost != up["cost"]:
-            draw_text(surface, f"(-{round((1 - cost / up['cost']) * 100)}%)",
-                      (x + get_font(22).size(money_lbl)[0] + 6, y + 44), 18, COLORS["good"])
-        if up["knowledge"]:
-            kx = x + 100
-            draw_text(surface, f"{up['knowledge']} knowledge", (kx, y + 42), 22,
-                      KNOWLEDGE_COLOR if afford_know else COLORS["bad"])
-        yy = y + 62
-        for line in wrap_text(up["description"], 20, rect.w - 16)[:3]:
-            draw_text(surface, line, (x, yy), 20, COLORS["text_dim"])
-            yy += 16
+        draw_outlined(surface, up["name"], (x, y + 26), 22, GOLD, width=2)
+        pending = bool(t.pending_effects(up))
+        for i, line in enumerate(wrap_text(up["description"], 16, rect.w - 24)[:2 if pending else 3]):
+            draw_outlined(surface, line, (x, y + 54 + i * 17), 16, (225, 235, 255), width=1)
+        if pending:
+            draw_outlined(surface, "special effect: not implemented yet", (x, y + 90), 14, (190, 200, 225), width=1)
+        btn = pygame.Rect(rect.x + 10, rect.bottom - 42, rect.w - 20, 32)
+        self._btn(surface, btn, COLORS["btn_green"], game, buyable, 9)
         if not ok:
-            status, color = reason, COLORS["bad"]
-        elif not afford_money:
-            status, color = f"Need ${math.ceil(cost - game.money)} more", COLORS["bad"]
-        elif not afford_know:
-            status, color = f"Need {up['knowledge'] - game.ball_knowledge} more knowledge (Jalu: Larp)", COLORS["bad"]
-        elif t.pending_effects(up):
-            status, color = "Special effect not implemented yet", COLORS["text_dim"]
-        else:
-            status, color = "", COLORS["text"]
-        if status:
-            draw_text(surface, status, (x, rect.bottom - 20), 19, color)
+            draw_outlined(surface, reason.upper(), btn.center, 17, (215, 218, 228), center=True, width=1)
+            return
+        surface.blit(gfx.icon("coin", 24), (btn.x + 10, btn.y + 4))
+        draw_outlined(surface, f"${cost}", (btn.x + 38, btn.centery), 22,
+                      (255, 255, 255) if afford_money else COLORS["bad"], anchor="midleft", width=2)
+        if cost != up["cost"]:
+            draw_outlined(surface, f"-{round((1 - cost / up['cost']) * 100)}%", (btn.x + 108, btn.centery), 15,
+                          COLORS["good"], anchor="midleft", width=1)
+        if up["knowledge"]:
+            surface.blit(gfx.icon("brain", 24), (btn.right - 74, btn.y + 4))
+            draw_outlined(surface, str(up["knowledge"]), (btn.right - 46, btn.centery), 22,
+                          KNOWLEDGE_COLOR if afford_know else COLORS["bad"], anchor="midleft", width=2)

@@ -31,7 +31,7 @@ def fire(g, t, target):
 
 # ---- A. Zizi unlocks by path tier 2
 g = new(); z = tower(g, "zizi", (300, 160)); g.selected = z
-rects = dict(g.ui.activity_rects("zizi"))
+g.ui.layout(g); rects = dict(g.ui.activity_rects("zizi"))
 click(g, rects["zizi_sloth"].center); print("sloth at start:", z.activity, "|", g.message)
 click(g, rects["zizi_pray"].center); print("pray at start :", z.activity, "|", g.message)
 assert z.activity is None
@@ -43,7 +43,7 @@ assert z.activity == "zizi_sloth"
 # A2 and B2 can never both exist -> one Zizi unlocks only one activity
 z2 = tower(g, "zizi", (500, 160), (1, 2)); print("A tier 2 on a (1,2) tower allowed?", z2.can_upgrade(0))
 assert not z2.can_upgrade(0)[0]
-z3 = tower(g, "zizi", (700, 160), (2, 0)); g.selected = z3
+z3 = tower(g, "zizi", (700, 160), (2, 0)); g.selected = z3; g.ui.layout(g); rects = dict(g.ui.activity_rects("zizi"))
 click(g, rects["zizi_pray"].center); assert z3.activity == "zizi_pray"; print("pray after A2: OK")
 
 # ---- B. effects
@@ -97,7 +97,7 @@ g = new(); key(g, pygame.K_1); assert g.placing == "jalu"; key(g, pygame.K_3); a
 key(g, pygame.K_SPACE); assert g.phase == Phase.BATTLE; print("hotkeys OK")
 g = new(); j = tower(g, "jalu", (400, 160)); g.selected = j; key(g, pygame.K_q); assert j.tiers == [1, 0]; key(g, pygame.K_w); assert j.tiers == [1, 1]
 key(g, pygame.K_x); assert j in g.towers and g.sell_pending is j; key(g, pygame.K_x); assert j not in g.towers; print("sell confirm OK")
-g = new(); j = tower(g, "jalu", (400, 160)); g.selected = j; click(g, g.ui.sell_btn.center)
+g = new(); j = tower(g, "jalu", (400, 160)); g.selected = j; g.ui.layout(g); click(g, g.ui.sell_btn.center)
 [g.update(1/60) for _ in range(60 * 4)]; click(g, g.ui.sell_btn.center); assert j in g.towers; print("sell confirm expires OK")
 g.draw(); pygame.image.save(screen, TMP + "/qol.png")
 

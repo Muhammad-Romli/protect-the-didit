@@ -5,22 +5,27 @@ SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 MAX_DT = 0.05  # clamp so a lag spike never teleports enemies
 
-# Layout as (x, y, w, h). Playfield + shop on the left, side panel on the right.
-PLAYFIELD_RECT = (0, 0, 1000, 640)
-SHOP_RECT = (0, 640, 1000, 80)
-PANEL_RECT = (1000, 0, 280, 720)
+# Layout as (x, y, w, h). BTD6-style: the map fills the whole window, the HUD floats on top,
+# a wooden bar sits at the bottom. Towers can only be placed above the bar (BUILD_RECT).
+PLAYFIELD_RECT = (0, 0, 1280, 720)
+BAR_RECT = (0, 636, 1280, 84)
+BUILD_RECT = (0, 0, 1280, 636)
+WORLD_CENTER = (640, 300)  # where big banners ("WAVE 3!") pop up
 
-# Economy
-START_MONEY = 650
+# Economy (faster progression, 2026-10-25): kills pay BOUNTY_MULT x the base bounty in data/enemies.py,
+# and the payout grows by BOUNTY_WAVE_GROWTH per wave so income keeps up with the stronger late waves.
+START_MONEY = 750
 START_STASH_HP = 100
 SELL_REFUND = 0.70
-WAVE_CLEAR_BONUS_BASE = 50
-WAVE_CLEAR_BONUS_PER_WAVE = 10
+BOUNTY_MULT = 2.0
+BOUNTY_WAVE_GROWTH = 0.08
+WAVE_CLEAR_BONUS_BASE = 100
+WAVE_CLEAR_BONUS_PER_WAVE = 35
 
 # Placement / map
-TOWER_RADIUS = 16
-PATH_MIN_DISTANCE = 30
-PATH_WIDTH = 36
+TOWER_RADIUS = 18
+PATH_MIN_DISTANCE = 42   # tower centre to path centre line (path half width 24 + tower radius 18)
+PATH_WIDTH = 48
 
 # Upgrade rule: one path up to MAX_TIER, the other at most MAX_OFF_PATH_TIER
 MAX_TIER = 4
@@ -47,18 +52,28 @@ DEBUG_MONEY = 1000
 DEBUG_KNOWLEDGE = 100  # F2 also gives this much ball knowledge
 
 COLORS = {
-    "grass": (84, 150, 84),
-    "path": (214, 183, 130),
-    "path_edge": (160, 130, 85),
+    "grass": (104, 178, 56),
+    "path": (170, 162, 150),
+    "path_edge": (96, 88, 80),
     "ui_bg": (34, 36, 44),
     "ui_btn": (58, 62, 76),
     "ui_btn_hover": (78, 84, 104),
     "ui_btn_off": (44, 46, 54),
-    "text": (235, 235, 240),
-    "text_dim": (140, 142, 152),
-    "bad": (235, 90, 90),
-    "good": (110, 220, 120),
-    "gold": (240, 200, 70),
-    "hp_bg": (90, 20, 20),
-    "hp_fg": (90, 220, 90),
+    "text": (255, 255, 255),
+    "text_dim": (200, 205, 220),
+    "bad": (255, 110, 100),
+    "good": (130, 240, 110),
+    "gold": (255, 214, 70),
+    "hp_bg": (60, 14, 14),
+    "hp_fg": (110, 230, 80),
+    # BTD6-style UI palette
+    "wood": (150, 104, 60),
+    "wood_light": (190, 140, 84),
+    "wood_dark": (96, 64, 36),
+    "ink": (38, 24, 18),          # text outline
+    "btn_green": (70, 200, 50),
+    "btn_blue": (60, 160, 235),
+    "btn_orange": (255, 160, 30),
+    "btn_red": (225, 70, 60),
+    "navy": (34, 52, 104),
 }

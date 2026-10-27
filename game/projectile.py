@@ -5,6 +5,7 @@ import math
 
 import pygame
 
+from game import gfx
 from game.assets import sprite
 from game.enemy import Enemy
 from game.utils import Vec
@@ -39,15 +40,18 @@ class Projectile:
             self.pos += to_dest.normalize() * step
 
     def draw(self, surface: pygame.Surface) -> None:
+        x, y = int(self.pos.x), int(self.pos.y)
         kind = self.source.kind if self.source is not None else None
         img = sprite(f"projectiles/{kind}", 16) if kind else None
         if img is not None:
             d = self.dest - self.pos
             angle = -math.degrees(math.atan2(d.y, d.x)) if d.length() > 0 else 0
             img = pygame.transform.rotate(img, angle)
-            surface.blit(img, img.get_rect(center=(int(self.pos.x), int(self.pos.y))))
+            surface.blit(img, img.get_rect(center=(x, y)))
             return
         r = 7 if self.aoe_radius > 0 else 5
-        pygame.draw.circle(surface, tuple(min(255, c + 70) // 2 + 80 for c in self.color), (int(self.pos.x), int(self.pos.y)), r + 3, 1)  # soft halo
-        pygame.draw.circle(surface, self.color, (int(self.pos.x), int(self.pos.y)), r)
-        pygame.draw.circle(surface, (255, 255, 255), (int(self.pos.x), int(self.pos.y)), r, 1)
+        gfx.blit_shadow(surface, (x + 5, y + 13), r * 2.4, r * 1.1, 80)   # shadow stays on the ground: the shot floats
+        halo = gfx.glow(r * 3, self.color, 170)
+        surface.blit(halo, halo.get_rect(center=(x, y)))
+        orb = gfx.sphere(r, gfx.tint(self.color, 0.15), bounce=self.color, shine=1.2)
+        surface.blit(orb, orb.get_rect(center=(x, y)))
