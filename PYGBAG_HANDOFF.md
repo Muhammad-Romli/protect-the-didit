@@ -9,6 +9,15 @@ Other docs: `CLAUDE.md` (design rules, authoritative for gameplay), `README.md` 
 
 ---
 
+## 0. Status (2026-10-27): what is already done in code, all UNTESTED
+Done (written without pygame or a browser, only `py_compile`d): 4.1 async loop, 4.2 plain `set_mode` + fullscreen hidden
+on web, 4.3 click gate + loading bar + step-wise sound synthesis (`audio.LAZY`) + sprite pre-warm (`game/loading.py`),
+4.4 localStorage for options (`game/web.py`), 4.5 a basic governor in `main.py`, right-click menu suppression via
+`platform.window.eval` (guessed API, wrapped in try/except).
+Not done: OGG pre-rendering, touch keypad for Bima's Graph, shape-sprite pre-warm, key/scroll suppression, half-resolution
+rendering. Everything in section 5 is still unchecked. Also new: Trojans were recoloured to bare wood and their wheels
+now stand on the road (`sprites_proc.trojan_lift`), see CHANGELOG.
+
 ## 1. What the game is
 
 2D tower defense in **Python + pygame-ce** (single map, 1280x720, 60 FPS). Enemies ("Didits", white hamsters) walk a

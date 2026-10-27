@@ -19,6 +19,7 @@ SAMPLE_RATE = 22050
 SFX_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "sfx")
 PITCH_VARIANTS = (1.0, 0.92, 1.12)  # repeating sounds get slight pitch changes, like BTD6 pops
 Samples = list[float]
+LAZY = False  # main.py sets this in the browser: sounds are then built step by step behind a loading bar
 
 
 # ------------------------------------------------------------------ synthesis
@@ -141,6 +142,7 @@ class Audio:
         self._sounds: dict[str, list[pygame.mixer.Sound]] = {}
         self._base_volume: dict[str, float] = {}
         self._last: dict[str, float] = {}
+        self._pending: list[str] = list(SOUNDS)  # names not synthesized yet
         try:
             pygame.mixer.quit()
             pygame.mixer.init(SAMPLE_RATE, -16, 1, 512, allowedchanges=0)
@@ -148,9 +150,25 @@ class Audio:
         except pygame.error:
             return  # no audio device: stay silent
         self.enabled = True
-        for name, (builder, variants, _gap, vol) in SOUNDS.items():
-            self._base_volume[name] = vol
-            self._sounds[name] = self._load(name, builder, variants)
+        if not LAZY:
+            self.build_all()
+
+    def _build(self, name: str) -> None:
+        builder, variants, _gap, vol = SOUNDS[name]
+        self._base_volume[name] = vol
+        self._sounds[name] = self._load(name, builder, variants)
+        if name in self._pending:
+            self._pending.remove(name)
+
+    def build_next(self) -> float:
+        """Build one more sound; returns the progress 0..1 (1 = everything is ready)."""
+        if self.enabled and self._pending:
+            self._build(self._pending[0])
+        return 1.0 - len(self._pending) / len(SOUNDS) if self.enabled else 1.0
+
+    def build_all(self) -> None:
+        while self.enabled and self._pending:
+            self._build(self._pending[0])
 
     def _load(self, name: str, builder, variants: int) -> list[pygame.mixer.Sound]:
         for ext in (".ogg", ".wav"):
@@ -163,8 +181,10 @@ class Audio:
         return [_to_sound(builder(p), 1.0) for p in PITCH_VARIANTS[:variants]]
 
     def play(self, name: str) -> None:
-        if not self.enabled or self.muted or name not in self._sounds:
+        if not self.enabled or self.muted or name not in SOUNDS:
             return
+        if name in self._pending:  # not built yet (browser: still loading): build just this one now
+            self._build(name)
         now = time.monotonic()
         if now - self._last.get(name, 0.0) < SOUNDS[name][2]:
             return  # rate limit: a swarm of hits must not turn into noise

@@ -145,7 +145,10 @@ class Enemy:
     # ----------------------------------------------------------------- draw
     def draw_shadow(self, surface: pygame.Surface) -> None:
         r = self.radius
-        gfx.blit_shadow(surface, (self.pos.x + r * 0.35, self.pos.y + r * 0.78), r * 2.0, r * 0.85, 100)
+        if self.kind in sprites_proc.TROJAN_KINDS:  # the cart's wheels stand ON the road: shadow under them
+            gfx.blit_shadow(surface, (self.pos.x + r * 0.1, self.pos.y + r * 0.1), r * 2.5, r * 0.6, 110)
+        else:
+            gfx.blit_shadow(surface, (self.pos.x + r * 0.35, self.pos.y + r * 0.78), r * 2.0, r * 0.85, 100)
         if self.is_boss:  # pulsing glow on the ground
             import math
             pulse = 1.0 + 0.12 * math.sin(pygame.time.get_ticks() / 150)
@@ -155,6 +158,8 @@ class Enemy:
     def draw(self, surface: pygame.Surface) -> None:
         r = self.radius
         x, y = int(self.pos.x), int(self.pos.y)
+        lift = int(round(sprites_proc.trojan_lift(r))) if self.kind in sprites_proc.TROJAN_KINDS else 0
+        y -= lift  # Trojans: raise the body so the wheels (not the body centre) touch the path
         frame = 0 if self.stun_timer > 0 else int(self.distance * WALK_FRAMES_PER_PX + self.anim_offset)
         for tx, ty, tf, tl, age in self.trail:  # speed afterimages, fading cyan
             ghost = sprites_proc.enemy_sprite(self.kind, r, self.color, tf, tl, False, 0, True)
@@ -162,9 +167,12 @@ class Enemy:
             if a > 8:
                 ghost = ghost.copy()
                 ghost.set_alpha(a)
-                surface.blit(ghost, ghost.get_rect(center=(int(tx), int(ty))))
+                surface.blit(ghost, ghost.get_rect(center=(int(tx), int(ty) - lift)))
         img = sprite(f"enemies/{self.kind}", 2 * r + 8)  # optional PNG override (faces right)
         if img is not None:
+            if lift:  # a PNG override is centred on the position like every other enemy
+                y += lift
+                lift = 0
             if self.facing_left:
                 img = pygame.transform.flip(img, True, False)
             if self.hit_flash > 0:

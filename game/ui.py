@@ -22,7 +22,7 @@ from data.settings import (BAR_RECT, COLORS, INCOME_INTERVAL_SECONDS, MAX_ACTIVI
                            PREP_MAX_SECONDS, TOWER_RADIUS)
 from data.towers import DEFAULT_STATS, TOWER_ORDER, TOWERS
 from data.waves import SPECIAL_WAVES, WAVES
-from game import gfx, options as opts_mod, sprites_proc
+from game import gfx, options as opts_mod, sprites_proc, web
 from game.actives import ACTIVES, actives_of
 from game.bima_ui import GraphConsole
 from game.utils import draw_outlined, outlined_text, wrap_text
@@ -155,8 +155,9 @@ class UI:
             self.opt_rows.append((key, pygame.Rect(p.x + 24, y, p.w - 48, 34)))
             y += 38
         y += 6
-        bw = (p.w - 48 - 20) // 3
-        for i, key in enumerate(("fullscreen", "restart", "resume")):
+        keys = ("restart", "resume") if web.IS_WEB else ("fullscreen", "restart", "resume")  # browser has its own
+        bw = (p.w - 48 - 10 * (len(keys) - 1)) // len(keys)
+        for i, key in enumerate(keys):
             self.opt_rows.append((key, pygame.Rect(p.x + 24 + i * (bw + 10), y, bw, 44)))
 
     def activity_rects(self, tower_kind: str) -> list[tuple[str, pygame.Rect]]:
@@ -431,7 +432,7 @@ class UI:
             d = TOWERS[game.placing]
             text = f"Placing {d['name']} (${d['cost']}) - click the map, right-click to cancel"
         if not text and game.selected is None:
-            text, dim = "1-3 place   Space start   P pause   F speed   Q/W upgrade   X sell   M mute   F11 fullscreen", True
+            text, dim = "1-3 place   Space start   P pause   F speed   Q/W upgrade   X sell   M mute" + ("" if web.IS_WEB else "   F11 fullscreen"), True
         if not text:
             return
         img = outlined_text(text, 20 if dim else 24, COLORS["text_dim"] if dim else GOLD, COLORS["ink"], 2)

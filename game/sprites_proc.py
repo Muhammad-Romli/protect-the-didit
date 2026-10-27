@@ -27,22 +27,23 @@ def _cut_below(img: pygame.Surface, y: int) -> pygame.Surface:
 
 
 # ------------------------------------------------------------------ hamster
-def _hamster_upper(kind: str, r: float, color, armored: int = 0) -> pygame.Surface:
+def _hamster_upper(kind: str, r: float, color, armored: int = 0, wood: bool = False) -> pygame.Surface:
     pad = int(r * 1.15)
     size = int(2 * r + 2 * pad)
     L = gfx.blank(size, size)
     c = size / 2
     for dx in (-0.52, 0.50):  # ears
         _put(L, gfx.sphere(0.38 * r, gfx.shade(color, 0.92)), c + dx * r, c - 0.80 * r)
-        _put(L, gfx.sphere(0.22 * r, (255, 168, 170), shine=0.2), c + dx * r + 0.03 * r, c - 0.78 * r)
+        _put(L, gfx.sphere(0.22 * r, gfx.shade(color, 0.62) if wood else (255, 168, 170), shine=0.2), c + dx * r + 0.03 * r, c - 0.78 * r)
     _put(L, gfx.sphere(r, color), c, c)
-    _put(L, gfx.ellipsoid(int(1.05 * r), int(0.9 * r), (250, 232, 200), shine=0.3), c + 0.18 * r, c + 0.30 * r)
-    cheek = gfx.blank(size, size)
-    pygame.draw.circle(cheek, (255, 120, 130, 90), (c + 0.50 * r, c + 0.16 * r), max(2, 0.16 * r))
-    L.blit(cheek, (0, 0))
+    _put(L, gfx.ellipsoid(int(1.05 * r), int(0.9 * r), gfx.shade(color, 1.18) if wood else (250, 232, 200), shine=0.3), c + 0.18 * r, c + 0.30 * r)
+    if not wood:  # a carved statue has no blush
+        cheek = gfx.blank(size, size)
+        pygame.draw.circle(cheek, (255, 120, 130, 90), (c + 0.50 * r, c + 0.16 * r), max(2, 0.16 * r))
+        L.blit(cheek, (0, 0))
     for dx in (0.28, 0.68):  # eyes
         _put(L, gfx.sphere(max(2.0, 0.17 * r), (24, 18, 26), shine=1.3), c + dx * r, c - 0.16 * r)
-    _put(L, gfx.sphere(max(1.6, 0.10 * r), (255, 150, 160), shine=0.4), c + 0.94 * r, c + 0.06 * r)  # nose
+    _put(L, gfx.sphere(max(1.6, 0.10 * r), (70, 42, 22) if wood else (255, 150, 160), shine=0.4), c + 0.94 * r, c + 0.06 * r)  # nose
     if kind == "fast":
         band = gfx.blank(size, size)
         pygame.draw.ellipse(band, (230, 50, 50), (c - 0.95 * r, c - 0.74 * r, 2.0 * r, 0.34 * r))
@@ -187,17 +188,22 @@ def _hamster_frame(kind: str, r: float, color, frame: int, armored: int = 0) -> 
 
 
 # ------------------------------------------------------------------- trojan
-WOOD = (176, 120, 62)
-PAINT = (246, 244, 240)
+WOOD = (184, 126, 66)  # bare wood: the Trojans are NOT painted any more
+TROJAN_KINDS = ("trojan", "trojan_trojan")
 
 
 def _wooden_didit(r: float, boss: bool) -> pygame.Surface:
-    """A giant Didit statue carved from wood and painted white: barrel-stave seams, iron (or gold)
+    """A giant Didit statue carved from bare wood: barrel-stave seams, wood grain, iron (or gold)
     bands, and glowing windows with tiny Didits peeking out. Sits on a cart (see _trojan_frame)."""
-    up = _hamster_upper("normal", r, PAINT)
+    up = _hamster_upper("normal", r, WOOD, wood=True)
     c = up.get_width() / 2
     ov = gfx.blank(*up.get_size())
-    seam = (168, 150, 122, 190)
+    seam = (86, 52, 24, 210)
+    grain = (120, 76, 36, 90)
+    for i in range(-5, 6):  # wood grain: faint wavy horizontal strokes
+        gy = c + i * 0.17 * r
+        pts = [(c + x * r, gy + 0.03 * r * math.sin(x * 5 + i)) for x in [j / 6 - 1 for j in range(13)]]
+        pygame.draw.lines(ov, grain, False, pts, 1)
     for x0 in (-0.78, -0.52, -0.26, 0.0, 0.26, 0.52, 0.78):  # staves: meridians of the ball
         pts = [(c + x0 * math.sqrt(max(0.0, 1 - y * y)) * r, c + y * r) for y in [i / 8 - 1 for i in range(17)]]
         pygame.draw.lines(ov, seam, False, pts, max(1, int(0.035 * r)))
@@ -230,6 +236,19 @@ def _wooden_didit(r: float, boss: bool) -> pygame.Surface:
     return up
 
 
+def _cycle_px() -> float:
+    """Road distance (px) covered by one walk cycle; imported lazily (game.enemy imports this module)."""
+    from game.enemy import WALK_FRAMES_PER_PX
+    return FRAMES / WALK_FRAMES_PER_PX
+
+
+def trojan_lift(r: float, ground: float = 0.08) -> float:
+    """How many px the Trojan sprite must be drawn ABOVE the enemy position so the wheels stand on the
+    road: the lowest wheel pixel ends up `ground * r` below the path centre line. (Wheel bottom, measured
+    from the sprite canvas centre, is 1.5 r + 2 - int(0.5 r) / 2, see _trojan_frame.)"""
+    return 1.5 * r + 2 - int(0.5 * r) / 2 - ground * r
+
+
 def _trojan_frame(r: float, frame: int, boss: bool) -> pygame.Surface:
     phi = frame / FRAMES * math.tau
     key = ("wooden", r, boss)
@@ -244,17 +263,20 @@ def _trojan_frame(r: float, frame: int, boss: bool) -> pygame.Surface:
     base = pygame.Rect(0, 0, int(2.1 * r), int(0.28 * r))  # cart platform
     base.center = (round(c), round(cy + 0.98 * r))
     pygame.draw.rect(canvas, ink, base.inflate(3, 3), border_radius=4)
-    pygame.draw.rect(canvas, (150, 100, 56), base, border_radius=4)
-    pygame.draw.rect(canvas, (206, 160, 100), (base.x + 2, base.y + 1, base.w - 4, max(2, base.h // 3)), border_radius=3)
+    pygame.draw.rect(canvas, (118, 78, 42), base, border_radius=4)
+    pygame.draw.rect(canvas, (170, 124, 72), (base.x + 2, base.y + 1, base.w - 4, max(2, base.h // 3)), border_radius=3)
     wr = 0.36 * r
+    # Roll without slipping: one 8-frame cycle = FRAMES / WALK_FRAMES_PER_PX px of road. The wheel has 6 spokes
+    # (60 deg symmetry), so it turns a whole number of 60 deg steps per cycle (the loop stays seamless).
+    k = max(1, round(_cycle_px() / (math.tau * wr) * 6))
     for wx in (-0.62, 0.62):  # wooden wheels, spokes roll
         cx2, cy2 = c + wx * r, cy + 1.14 * r
         pygame.draw.circle(canvas, ink, (cx2, cy2), wr + 2)
-        pygame.draw.circle(canvas, (140, 92, 50), (cx2, cy2), wr)
-        pygame.draw.circle(canvas, (96, 62, 32), (cx2, cy2), wr * 0.72, max(1, int(0.05 * r)))
-        for k in range(6):
-            a = phi * 2 + k * math.pi / 3
-            pygame.draw.line(canvas, (96, 62, 32), (cx2, cy2), (cx2 + math.cos(a) * wr * 0.9, cy2 + math.sin(a) * wr * 0.9), max(1, int(0.06 * r)))
+        pygame.draw.circle(canvas, (112, 72, 38), (cx2, cy2), wr)
+        pygame.draw.circle(canvas, (70, 44, 22), (cx2, cy2), wr * 0.72, max(1, int(0.05 * r)))
+        for j in range(6):
+            a = phi * k / 6 + j * math.pi / 3
+            pygame.draw.line(canvas, (70, 44, 22), (cx2, cy2), (cx2 + math.cos(a) * wr * 0.9, cy2 + math.sin(a) * wr * 0.9), max(1, int(0.06 * r)))
         pygame.draw.circle(canvas, (214, 170, 100), (cx2, cy2), max(2, 0.1 * r))
     body = pygame.transform.rotozoom(up, 2.5 * math.sin(phi), 1.0)
     canvas.blit(body, body.get_rect(center=(round(c), round(cy - abs(math.sin(phi)) * 0.04 * r))))

@@ -29,13 +29,13 @@ ENEMIES = {
     # Reinforced Didit: 10 hits to break the armor, then it can be damaged.
     "reinforced": {"name": "Reinforced Didit", "hp": 40, "speed": 48, "stash_damage": 2,
                    "money": 14, "radius": 14, "color": (246, 244, 240), "is_boss": False, "armor": 10},
-    # Trojan Didit: a wooden Didit painted white; a miniboss. 5 normal Didits climb out when it breaks.
+    # Trojan Didit: a bare-wood Didit statue on wheels (not painted); a miniboss. 5 normal Didits climb out when it breaks.
     "trojan": {"name": "Trojan Didit", "hp": 150, "speed": 40, "stash_damage": 8,
-               "money": 40, "radius": 30, "color": (240, 238, 232), "is_boss": False, "mini": True,
+               "money": 40, "radius": 30, "color": (184, 126, 66), "is_boss": False, "mini": True,
                "spawns": ("normal", 5)},
     # Trojan Trojan Didit: huge boss horse; 3 Trojan Didits come out.
     "trojan_trojan": {"name": "Trojan Trojan Didit", "hp": 600, "speed": 24, "stash_damage": 40,
-                      "money": 150, "radius": 46, "color": (240, 238, 232), "is_boss": True,
+                      "money": 150, "radius": 46, "color": (184, 126, 66), "is_boss": True,
                       "spawns": ("trojan", 3)},
 }
 

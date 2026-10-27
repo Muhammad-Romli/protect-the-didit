@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-27: Trojan look fix + first pygbag port pass (NOT run: no pygame/browser in the session)
+- Trojan Didit / Trojan Trojan Didit are now **bare wood** (no white paint): wood body with grain and dark stave seams, wood-toned ears/belly/nose, darker cart and wheels. Tiny Didits in the windows stay white. `data/enemies.py` colour changed so death splinters are wood coloured too.
+- Trojan wheels now **stand on the road**: the sprite is drawn raised by `sprites_proc.trojan_lift(r)` so the lowest wheel pixel sits on the path centre line (hit position unchanged). Shadow, HP bar, bubble, stun/vuln marks follow the body. Wheels roll without slipping (spin matches distance walked; before they spun 2-3x too fast).
+- pygbag: `main.py` is async (desktop path unchanged), click-to-start gate + loading bar in the browser, sounds synthesized step by step (`audio.LAZY`, `Audio.build_next`), sprite pre-warm (`game/loading.py`), options saved to localStorage (`game/web.py`), fullscreen button/hints hidden in the browser, simple quality governor (Particles Low + no vignette after 2 s of frames above 25 ms).
+
+
 ## Checkpoint 8 (2026-10-25, third batch)
 - **Bima** (Mathematician, cost 400, key 4). Graph path: Cartesian axis, typed formulas parsed by a safe custom parser (game/formula.py), curve sampling with adaptive refinement and discontinuity breaks (game/curves.py), Brain Energy cost by arc length, preview, FIRE, direction, patterns, miss refund. Geometry path: square/triangle/circle shots, per-target shape slots, collisions with per-enemy cooldown and capped percent damage, 3D shapes (Lv3), Cube / Pyramid / Sphere actives (Lv4). Numbers in data/bima.py. One path only.
 - Active skills finished: Jalu Thunderstrike and Loom Reset, Zizi Nap Time (+ debuff 25%), Romli random events. Bottom-bar ability buttons (E/C/V), aimed abilities wait for a map click.

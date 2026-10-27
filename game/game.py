@@ -21,7 +21,7 @@ from data.towers import TOWER_ORDER, TOWERS
 from data.waves import NEW_ENEMY_WAVES, SPECIAL_BONUS_MULT, SPECIAL_WAVES, WAVE_SCALING, WAVES
 from data.enemies import ENEMIES
 from data.effects import EFFECT_PARAMS
-from game import actives, bima, options as opts_mod
+from game import actives, bima, options as opts_mod, web
 from game.effects import EFFECTS
 from game import gfx
 from game.assets import sprite
@@ -282,6 +282,8 @@ class Game:
             self._request_sell()
 
     def _toggle_fullscreen(self) -> None:
+        if web.IS_WEB:  # the browser owns fullscreen (F11 / its own button)
+            return
         try:
             pygame.display.toggle_fullscreen()
         except pygame.error:

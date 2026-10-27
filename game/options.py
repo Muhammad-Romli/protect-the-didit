@@ -8,10 +8,14 @@ from __future__ import annotations
 import json
 import os
 
+from game import web
+
 PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "options.json")
 
 TARGET_MODES = ["first", "last", "strong", "weak", "close"]
 TARGET_LABELS = {"first": "First", "last": "Last", "strong": "Strong", "weak": "Weak", "close": "Close"}
+
+STORAGE_KEY = "protect_the_didit_options"  # browser localStorage key
 
 DEFAULTS = {"auto_start": False, "auto_delay": 3, "volume": 7, "shake": True, "comics": True,
             "particles": "High", "vignette": True, "fps": False, "default_target": "first"}
@@ -33,8 +37,12 @@ ROWS = [
 def load() -> dict:
     opts = dict(DEFAULTS)
     try:
-        with open(PATH, encoding="utf-8") as f:
-            saved = json.load(f)
+        if web.IS_WEB:  # the in-browser file system is memory only: use localStorage
+            raw = web.storage_get(STORAGE_KEY)
+            saved = json.loads(raw) if raw else {}
+        else:
+            with open(PATH, encoding="utf-8") as f:
+                saved = json.load(f)
         for k, v in saved.items():
             if k in DEFAULTS and type(v) is type(DEFAULTS[k]):
                 opts[k] = v
@@ -44,6 +52,9 @@ def load() -> dict:
 
 
 def save(opts: dict) -> None:
+    if web.IS_WEB:
+        web.storage_set(STORAGE_KEY, json.dumps(opts))
+        return
     try:
         with open(PATH, "w", encoding="utf-8") as f:
             json.dump(opts, f, indent=1)
