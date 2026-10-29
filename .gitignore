@@ -13,6 +13,13 @@ dist/
 .mypy_cache/
 .ruff_cache/
 
+# --- Flat Virtual Environment ---
+bin/
+lib/
+lib64/
+pyvenv.cfg
+include/
+
 # --- Virtual environments ---
 .venv/
 venv/
