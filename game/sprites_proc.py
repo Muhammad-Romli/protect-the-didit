@@ -10,7 +10,7 @@ import math
 
 import pygame
 
-from game import gfx
+from game import gfx, models
 
 FRAMES = 8
 _CACHE: dict[tuple, pygame.Surface] = {}
@@ -306,31 +306,29 @@ def enemy_sprite(kind: str, radius: float, color, frame: int, facing_left: bool,
 
 
 TOWER_STYLE = {
-    "jalu": {"shirt": (70, 130, 240), "hair": (46, 34, 56), "skin": (244, 206, 170)},
-    "romli": {"shirt": (70, 190, 110), "hair": (30, 28, 30), "skin": (226, 184, 140)},
+    # skin: Jalu / Romli / Bima are brown (2026-10-28); Zizi keeps her light skin.
+    "jalu": {"shirt": (70, 130, 240), "hair": (46, 34, 56), "skin": (184, 128, 88)},
+    "romli": {"shirt": (70, 190, 110), "hair": (30, 28, 30), "skin": (168, 112, 74)},
     "zizi": {"shirt": (176, 100, 214), "hair": (70, 40, 120), "skin": (238, 196, 156)},
-    "bima": {"shirt": (255, 160, 70), "hair": (60, 36, 24), "skin": (226, 178, 132)},
+    "bima": {"shirt": (255, 160, 70), "hair": (60, 36, 24), "skin": (176, 120, 82)},
+    "fused_jalu_romli": {"shirt": (46, 168, 176), "hair": (46, 34, 56), "skin": (176, 120, 82)},
 }
 
 
-def tower_sprite(kind: str, radius: float, color) -> pygame.Surface:
-    """Little maker standing on a stone pedestal. Origin (the tower position) = centre of the pedestal top."""
-    key = ("tower", kind, radius)
+def tower_sprite(kind: str, radius: float, color, look=None) -> pygame.Surface:
+    """Little maker standing on a stone pedestal. Origin (the tower position) = centre of the pedestal top.
+    `look` = (path, tier) from models.look_of: costume of the followed upgrade path (see game/models.py)."""
+    key = ("tower", kind, radius, look)
     if key in _CACHE:
         return _CACHE[key]
-    st = TOWER_STYLE.get(kind, {"shirt": color, "hair": (40, 30, 30), "skin": (240, 200, 160)})
+    st = dict(TOWER_STYLE.get(kind, {"shirt": color, "hair": (40, 30, 30), "skin": (240, 200, 160)}))
+    cos = models.costume(kind, look)
+    st.update(cos.get("style", {}))
     S = gfx.SS
     u = radius * S
-    W, H = int(3.4 * u), int(4.6 * u)
-    cv = gfx.blank(W, H)
-    ox, oy = W / 2, 3.45 * u
-
-    def P(x, y):
-        return (ox + x * u, oy + y * u)
-
-    def put(img, x, y):  # blit a (1x) cached sprite scaled up to supersample space
-        big = pygame.transform.smoothscale(img, (img.get_width() * S, img.get_height() * S))
-        cv.blit(big, big.get_rect(center=(round(P(x, y)[0]), round(P(x, y)[1]))))
+    cv = gfx.blank(int(3.4 * u), int(4.6 * u))
+    c = models.Ctx(cv, radius, st)
+    P = c.P
 
     # pedestal: dark base, shaded side band, lit plate
     pygame.draw.ellipse(cv, (96, 90, 84), (*P(-1.2, 0.18), 2.4 * u, 1.12 * u))
@@ -340,26 +338,24 @@ def tower_sprite(kind: str, radius: float, color) -> pygame.Surface:
     pygame.draw.ellipse(cv, (206, 200, 188), (*P(-1.2, -0.30), 2.4 * u, 1.10 * u))
     pygame.draw.ellipse(cv, (176, 170, 158), (*P(-1.0, -0.20), 2.0 * u, 0.90 * u))
     pygame.draw.ellipse(cv, (96, 90, 84), (*P(-1.2, -0.30), 2.4 * u, 1.10 * u), max(2, int(0.05 * u)))
+    if cos.get("back"):  # cape, halo...
+        cos["back"](c)
     # body (shirt) with shoes
     for dx in (-0.30, 0.30):
-        put(gfx.sphere(0.2 * radius, (50, 42, 46), shine=0.5), dx, 0.12)
-    put(gfx.ellipsoid(int(1.2 * radius), int(1.32 * radius), st["shirt"]), 0, -0.52)
+        c.sph(0.2, st.get("shoes", (50, 42, 46)), dx, 0.12, 0.5)
+    c.put(gfx.ellipsoid(int(1.2 * radius), int(1.32 * radius), st["shirt"]), 0, -0.52)
+    if cos.get("body"):
+        cos["body"](c)
     for dx in (-0.66, 0.66):  # arms
-        put(gfx.sphere(0.24 * radius, st["skin"], shine=0.6), dx, -0.48)
+        c.sph(0.24, st.get("glove", st["skin"]), dx, -0.48, 0.6)
+    models.hair_back(c, kind)
+    if cos.get("behind_head"):
+        cos["behind_head"](c)
     # head
-    put(gfx.sphere(0.66 * radius, st["skin"], shine=0.8), 0, -1.32)
-    hair = gfx.sphere(0.70 * radius, st["hair"], shine=0.9)
-    if kind == "zizi":  # beanie with a folded brim
-        cap = _cut_below(gfx.sphere(0.74 * radius, (130, 70, 180), shine=0.9), int(hair.get_height() * 0.52))
-        put(cap, 0, -1.58)
-        pygame.draw.rect(cv, (190, 140, 230), (*P(-0.62, -1.50), 1.24 * u, 0.16 * u), border_radius=int(0.08 * u))
-    else:
-        put(_cut_below(hair, int(hair.get_height() * 0.50)), 0, -1.56)
-        if kind == "jalu":
-            for dx in (-0.36, 0.0, 0.36):  # spiky hair
-                gfx.poly(cv, st["hair"], [P(dx - 0.2, -1.82), P(dx + 0.02, -2.28 + abs(dx) * 0.2), P(dx + 0.2, -1.82)])
+    c.sph(0.66, st["skin"], 0, -1.32)
+    models.draw_hair(c, kind, cos)
     for dx in (-0.24, 0.24):  # eyes
-        put(gfx.sphere(0.085 * radius, (22, 18, 26), shine=1.3), dx, -1.28)
+        c.sph(0.085, (22, 18, 26), dx, -1.28, 1.3)
     if kind == "bima":  # round glasses and a pi on the shirt
         for dx in (-0.24, 0.24):
             pygame.draw.circle(cv, (50, 36, 30), P(dx, -1.28), 0.21 * u, max(2, int(0.05 * u)))
@@ -367,11 +363,12 @@ def tower_sprite(kind: str, radius: float, color) -> pygame.Surface:
         f = pygame.font.Font(None, int(0.95 * u))
         t = f.render("\u03c0", True, (255, 255, 255))
         cv.blit(t, t.get_rect(center=P(0, -0.5)))
-    if kind == "romli":  # glasses
-        for dx in (-0.24, 0.24):
-            pygame.draw.circle(cv, (40, 40, 50), P(dx, -1.28), 0.2 * u, max(2, int(0.045 * u)))
-        pygame.draw.line(cv, (40, 40, 50), P(-0.05, -1.30), P(0.05, -1.30), max(2, int(0.04 * u)))
+    # (Romli's glasses were removed on 2026-10-28)
     pygame.draw.arc(cv, (150, 70, 70), (*P(-0.2, -1.22), 0.4 * u, 0.26 * u), math.pi * 1.15, math.pi * 1.85, max(2, int(0.045 * u)))
+    if cos.get("face"):  # mask, sleepy eyelids...
+        cos["face"](c)
+    if cos.get("front"):  # horns, crown, headphones...
+        cos["front"](c)
     img = gfx.downscale(cv, S)
     _CACHE[key] = img
     return img

@@ -18,6 +18,10 @@ Not done: OGG pre-rendering, touch keypad for Bima's Graph, shape-sprite pre-war
 rendering. Everything in section 5 is still unchecked. Also new: Trojans were recoloured to bare wood and their wheels
 now stand on the road (`sprites_proc.trojan_lift`), see CHANGELOG.
 
+Update 2026-10-27 (2): the stock pygbag page stretched the canvas and showed its own Python-logo splash before
+`main.py` starts; the page CSS is now overridden at runtime (`game/web.py`) but pygbag's own pre-splash is not
+restyled (would need a custom `--template`). Autosave + title/loading screens added (see CHANGELOG).
+
 ## 1. What the game is
 
 2D tower defense in **Python + pygame-ce** (single map, 1280x720, 60 FPS). Enemies ("Didits", white hamsters) walk a
@@ -33,7 +37,7 @@ gradients, a baked scenery surface, synthesised sound effects. The only external
 ### Characters (data/towers.py, numbers in data/)
 | Tower | Cost | Path A | Path B |
 |---|---|---|---|
-| Jalu | 200 | God of Thunder (damage; tier 4 **Thunderstrike** active) | Temporal Loom Guy (slow/push; tier 3 **Speed Against Time**, tier 4 **Loom Reset** active). Upgrades also cost "ball knowledge" earned by the *Larping* activity. |
+| Jalu | 200 | Mark (melee brawler, `data/mark.py`; tier 4 **Sweep** active; each Jalu is locked to one path) | Temporal Loom Guy (slow/push; tier 3 **Speed Against Time**, tier 4 **Loom Reset** active). Upgrades also cost "ball knowledge" earned by the *Larping* activity. |
 | Romli | 250 | Farm/Business (income) | Programmer (money per hit; tier 2 breaks armor 3x; tier 3-4 **random events** every 20 s) |
 | Zizi | 300 | Recitation (AoE aura, slow, attack speed aura) | Sin of Sloth (stun; tier 4 **Nap Time** active) |
 | **Bima** | 400 | **Graph**: type formulas, fire curves, Brain Energy | **Geometry**: shape stacks, collisions, Cube/Pyramid/Sphere actives |

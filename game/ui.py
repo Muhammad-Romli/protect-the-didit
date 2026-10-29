@@ -22,7 +22,7 @@ from data.settings import (BAR_RECT, COLORS, INCOME_INTERVAL_SECONDS, MAX_ACTIVI
                            PREP_MAX_SECONDS, TOWER_RADIUS)
 from data.towers import DEFAULT_STATS, TOWER_ORDER, TOWERS
 from data.waves import SPECIAL_WAVES, WAVES
-from game import gfx, options as opts_mod, sprites_proc, web
+from game import gfx, options as opts_mod, sprites_proc
 from game.actives import ACTIVES, actives_of
 from game.bima_ui import GraphConsole
 from game.utils import draw_outlined, outlined_text, wrap_text
@@ -155,9 +155,8 @@ class UI:
             self.opt_rows.append((key, pygame.Rect(p.x + 24, y, p.w - 48, 34)))
             y += 38
         y += 6
-        keys = ("restart", "resume") if web.IS_WEB else ("fullscreen", "restart", "resume")  # browser has its own
-        bw = (p.w - 48 - 10 * (len(keys) - 1)) // len(keys)
-        for i, key in enumerate(keys):
+        bw = (p.w - 48 - 20) // 3
+        for i, key in enumerate(("fullscreen", "restart", "resume")):
             self.opt_rows.append((key, pygame.Rect(p.x + 24 + i * (bw + 10), y, bw, 44)))
 
     def activity_rects(self, tower_kind: str) -> list[tuple[str, pygame.Rect]]:
@@ -432,7 +431,7 @@ class UI:
             d = TOWERS[game.placing]
             text = f"Placing {d['name']} (${d['cost']}) - click the map, right-click to cancel"
         if not text and game.selected is None:
-            text, dim = "1-3 place   Space start   P pause   F speed   Q/W upgrade   X sell   M mute" + ("" if web.IS_WEB else "   F11 fullscreen"), True
+            text, dim = "1-3 place   Space start   P pause   F speed   Q/W upgrade   X sell   M mute   F11 fullscreen", True
         if not text:
             return
         img = outlined_text(text, 20 if dim else 24, COLORS["text_dim"] if dim else GOLD, COLORS["ink"], 2)
@@ -575,6 +574,29 @@ class UI:
                 pygame.draw.rect(surface, (60, 30, 10), (rect.x + 10, rect.bottom - 8, rect.w - 20, 4), border_radius=2)
                 pygame.draw.rect(surface, (255, 240, 160), (rect.x + 10, rect.bottom - 8, int((rect.w - 20) * frac), 4), border_radius=2)
 
+    def _draw_locked_card(self, surface, game: "Game", path: int, rect: pygame.Rect) -> None:
+        """Greyed-out upgrade card for a path this Jalu can no longer take."""
+        t = game.selected
+        grey, dim = (150, 154, 168), (110, 114, 128)
+        plate = gfx.blank(rect.w, rect.h)
+        pygame.draw.rect(plate, (20, 22, 30, 150), (0, 0, rect.w, rect.h), border_radius=12)
+        pygame.draw.rect(plate, (255, 255, 255, 40), (0, 0, rect.w, rect.h), 2, border_radius=12)
+        surface.blit(plate, rect.topleft)
+        x, y = rect.x + 12, rect.y + 8
+        draw_outlined(surface, f"{'AB'[path]}  {t.data['paths'][path]['name']}", (x, y), 18, dim, width=2)
+        for i in range(MAX_TIER):  # empty tier pips
+            c = (rect.right - 18 - (MAX_TIER - 1 - i) * 16, y + 11)
+            pygame.draw.circle(surface, (20, 14, 30), c, 7)
+            pygame.draw.circle(surface, (60, 64, 80), c, 5)
+        cx, cy = rect.centerx, rect.centery + 2
+        pygame.draw.arc(surface, (20, 14, 30), (cx - 12, cy - 30, 24, 30), 0, math.pi, 7)  # padlock shackle
+        pygame.draw.arc(surface, grey, (cx - 12, cy - 30, 24, 30), 0, math.pi, 4)
+        body = pygame.Rect(cx - 17, cy - 10, 34, 26)
+        pygame.draw.rect(surface, (20, 14, 30), body.inflate(4, 4), border_radius=6)
+        pygame.draw.rect(surface, grey, body, border_radius=5)
+        pygame.draw.circle(surface, (50, 54, 66), (cx, cy + 1), 4)
+        draw_outlined(surface, "LOCKED", (cx, rect.bottom - 22), 20, grey, center=True, width=2)
+
     def _draw_upgrade_card(self, surface, game: "Game", path: int, rect: pygame.Rect) -> None:
         t = game.selected
         up = t.next_upgrade(path)
@@ -583,6 +605,9 @@ class UI:
         afford_money = up is not None and game.money >= cost
         afford_know = up is not None and game.ball_knowledge >= up["knowledge"]
         buyable = up is not None and ok and afford_money and afford_know
+        if up is not None and t.is_path_locked(path):  # Jalu: the other path was chosen -> this one is locked
+            self._draw_locked_card(surface, game, path, rect)
+            return
         plate = gfx.blank(rect.w, rect.h)
         pygame.draw.rect(plate, (255, 255, 255, 26), (0, 0, rect.w, rect.h), border_radius=12)
         pygame.draw.rect(plate, (130, 240, 110, 190) if buyable else (255, 255, 255, 60), (0, 0, rect.w, rect.h), 2, border_radius=12)

@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-10-28 (2): models pass (NOT run: no pygame in the session, only compiled)
+- New `game/models.py`: costumes per upgrade path and tier (Jalu A Mark suit/mask/cape, Jalu B Loki suit/horns/cape + floating Temporal Loom, Romli A business shirt -> suit -> crown, Romli B hoodie/headphones/code screens, Zizi A shawl/halo, Zizi B pajamas/sleepy eyes/pillow, Bima A lab coat/pencil/hologram wave, Bima B orbiting shapes/laurel), held weapons (cardboard prop sword, scepter, fly swatter, prayer beads, compass), projectile models (rolled poster, magic bolt, bug, prayer-bead ring, equation spark), props (fist, loom, screen, pillow), Mark's running sprite for Sweep, fusion tower look.
+- Look changes: Jalu, Romli and Bima have brown skin (Zizi unchanged). Romli's glasses removed, short wavy hair. Zizi: medium straight hair (framing the face and falling behind the shoulders, beanie kept). Bima: very short buzz cut.
+- `tower_sprite(kind, radius, color, look=None)` got a `look`; Tower.draw, Projectile.draw, mark.draw_world and loading pre-warm use the models. PNG overrides in assets/sprites still win.
+- Test: `tests/test_models.py`.
+
+## 2026-10-28: Jalu path A is now Mark (Thor removed) + per-unit path lock
+- Removed Thor: path, `pierce_1`, `chain_lightning`, Thunderstrike active, bolt rendering, `zap`/`thunder` sounds and their FX. (`vfx.lightning` stays: Jalu's hit sparks use it.)
+- Jalu is locked to one path per unit (`Tower.is_path_locked`); locked card is greyed with "LOCKED" in the panel. Other towers unchanged.
+- New Mark path (`data/mark.py` = all numbers, `game/mark.py` = logic): melee punches, knockback, rage stacks, tier 4 Sweep active with VFX/SFX. Debug `F4` = free next upgrade.
+- Savegame VERSION 2 (old saves are ignored: Thor tiers would have loaded as Mark). Tests: `tests/test_mark.py`.
+
+## 2026-10-27 (2): browser display fix, autosave, new title/loading screen (NOT run: no pygame/browser in the session)
+- Browser: `web.setup_page()` injects CSS so the canvas fits the window at 16:9 WITHOUT stretching (the stock page squashed it), is scaled smoothly (`image-rendering: auto`), dark page background, no right-click menu, no arrow/space page scrolling. Fullscreen works in the browser (Options button, F11, title menu) via the Fullscreen API.
+- Autosave: `game/savegame.py`. After every `SAVE_EVERY_WAVES` (3, data/settings.py) cleared wave a snapshot is written (browser: localStorage, desktop: `savegame.json`): money, knowledge, stash HP, wave number, towers incl. tiers/targeting/activity/Bima formula. A "Game saved" message shows. Winning clears the save; losing keeps the last checkpoint. Test: `tests/test_savegame.py`.
+- New title menu (CONTINUE / NEW GAME / FULLSCREEN) and loading screen (a Didit walks along a cobblestone path to the Snack Stash; the path is the progress bar, rotating tips). Flow: title -> loading -> game, same on desktop and web (sounds are always built step by step now).
+- Quality governor relaxed: only triggers below 25 fps for 5 s.
+
+
 ## 2026-10-27: Trojan look fix + first pygbag port pass (NOT run: no pygame/browser in the session)
 - Trojan Didit / Trojan Trojan Didit are now **bare wood** (no white paint): wood body with grain and dark stave seams, wood-toned ears/belly/nose, darker cart and wheels. Tiny Didits in the windows stay white. `data/enemies.py` colour changed so death splinters are wood coloured too.
 - Trojan wheels now **stand on the road**: the sprite is drawn raised by `sprites_proc.trojan_lift(r)` so the lowest wheel pixel sits on the path centre line (hit position unchanged). Shadow, HP bar, bubble, stun/vuln marks follow the body. Wheels roll without slipping (spin matches distance walked; before they spun 2-3x too fast).

@@ -77,3 +77,6 @@ COLORS = {
     "btn_red": (225, 70, 60),
     "navy": (34, 52, 104),
 }
+
+# Autosave: a snapshot is stored (browser localStorage / savegame.json) after every Nth cleared wave
+SAVE_EVERY_WAVES = 3

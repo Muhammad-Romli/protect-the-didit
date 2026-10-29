@@ -5,7 +5,7 @@ import math
 
 import pygame
 
-from game import gfx, sprites_proc
+from game import gfx, models, sprites_proc
 from game.assets import sprite
 from game.enemy import Enemy
 from game.utils import Vec
@@ -60,6 +60,17 @@ class Projectile:
             surface.blit(halo, halo.get_rect(center=(x, y)), special_flags=pygame.BLEND_RGB_ADD)
             surface.blit(spr, spr.get_rect(center=(x, y)))
             return
+        if kind and self.shape is None:
+            m = models.projectile(kind, models.look_of(kind, self.source.tiers))
+            if m is not None:
+                spr, spin = m
+                d = self.dest - self.pos
+                ang = -math.degrees(math.atan2(d.y, d.x)) if d.length() > 0 else 0
+                ang += (pygame.time.get_ticks() / 1000 * spin) % 360
+                gfx.blit_shadow(surface, (x + 5, y + 13), 20, 9, 80)
+                img = pygame.transform.rotate(spr, ang)
+                surface.blit(img, img.get_rect(center=(x, y)))
+                return
         r = 7 if self.aoe_radius > 0 else 5
         gfx.blit_shadow(surface, (x + 5, y + 13), r * 2.4, r * 1.1, 80)   # shadow stays on the ground: the shot floats
         halo = gfx.glow(r * 3, self.color, 170)

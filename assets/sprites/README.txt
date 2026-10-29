@@ -13,3 +13,6 @@ Check the license of anything you download before using or sharing it.
 
 Without PNGs the game draws its own shaded procedural sprites (game/sprites_proc.py).
 Font: assets/fonts/LilitaOne-Regular.ttf, SIL Open Font License (OFL.txt).
+
+Note: the built-in models (costumes per upgrade tier, weapons, projectiles) are in game/models.py.
+A towers/<kind>.png override replaces the body for ALL tiers.

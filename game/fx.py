@@ -109,13 +109,6 @@ class FX:
     def aoe(self, pos, radius: float, color) -> None:
         self.vfx.ring(pos, radius * 0.3, radius, 0.3, color, 4)
 
-    def zap(self, a, b) -> None:
-        self.audio.play("zap")
-        self.vfx.burst(b, (255, 245, 140), 6, 120, 0.2, 3, 0)
-        if self._comic_cd <= 0:
-            self._comic_cd = COMIC_GAP
-            self.vfx.comic(pygame.Vector2(b) + pygame.Vector2(0, -20), "ZAP!", (255, 245, 100), 34)
-
     def pushed(self, enemy) -> None:
         self.audio.play("whoosh")
         self.vfx.burst(enemy.pos, (190, 130, 255), 10, 140, 0.35, 4, 0)
@@ -140,10 +133,13 @@ class FX:
             self.vfx.burst(p, col, 1, 24, 0.7 + 0.1 * n, 2 + n // 3, -60)
 
     def tower_hit(self, enemy, source) -> None:
-        """Character-flavoured impact: Jalu thunder sparks, Romli coins, Zizi ripples, Bima chalk dust."""
+        """Character-flavoured impact: Jalu thunder sparks (Mark: punch impact), Romli coins, Zizi ripples, Bima chalk dust."""
         kind = getattr(source, "kind", None)
         pos = enemy.pos
-        if kind == "jalu":
+        if kind == "jalu" and "mark_melee" in source.effects:
+            self.vfx.burst(pos, (255, 190, 90), 3, 120, 0.22, 3, 0)
+            self.vfx.pop(pos, 24, (255, 170, 70), 0.1)
+        elif kind == "jalu":
             self.vfx.lightning(pos + pygame.Vector2(-16, -16), pos + pygame.Vector2(6, 8), (180, 210, 255), 0.12, 3, 8)
             self.vfx.pop(pos, 22, (120, 170, 255), 0.12)
         elif kind == "romli":
@@ -160,21 +156,58 @@ class FX:
         self.vfx.pop(tip, 22 + 3 * (tower.tiers[0] + tower.tiers[1]), tower.color, 0.1)
         self.vfx.burst(tip, tower.color, 3, 120, 0.2, 2, 0)
 
-    def thunder_warn(self, pos, radius) -> None:
-        self.vfx.ring(pos, radius, radius * 0.4, 0.45, (255, 240, 120), 3)
+    # ------------------------------------------------------- Mark (Jalu path A)
+    def mark_punch(self, tower, target, stacks: int) -> None:
+        """One melee punch: swoosh + impact at the target; rage stacks make it redder and louder."""
+        self.audio.play("punch")
+        self.vfx.ring(tower.pos, 6, 22, 0.1, (255, 255, 255), 2)
+        self.vfx.pop(target.pos, 30 + 2 * stacks, (255, 190, 90) if stacks < 5 else (255, 110, 80), 0.12)
+        self.vfx.burst(target.pos, (255, 220, 140), 3, 110, 0.18, 3, 0)
+        if self._comic_cd <= 0 and random.random() < 0.12:
+            self._comic_cd = COMIC_GAP
+            self.vfx.comic(pygame.Vector2(target.pos) + pygame.Vector2(0, -22), random.choice(["PUNCH!", "WHAM!", "BAM!"]),
+                           (255, 210, 90) if stacks < 5 else (255, 120, 90), 30)
 
-    def thunder_strike(self, pos, radius) -> None:
-        self.audio.play("thunder")
-        top = pygame.Vector2(pos.x + random.uniform(-30, 30), -10)
-        for _ in range(3):
-            self.vfx.lightning(top, pos, (255, 245, 150), 0.35, 6, 26)
-        self.vfx.pop(pos, radius * 1.6, (255, 240, 150), 0.35)
-        self.vfx.ring(pos, 10, radius, 0.35, (255, 255, 255), 5)
-        self.vfx.ring(pos, 10, radius * 1.3, 0.5, (255, 220, 90), 3)
-        self.vfx.burst(pos, (255, 240, 140), 26, 280, 0.6, 5, 150)
-        self.vfx.comic(pos + pygame.Vector2(0, -radius), "THUNDERSTRIKE!", (255, 245, 100), 40, 1.0)
-        self.vfx.flash((255, 255, 230), 90, 0.2)
-        self.vfx.shake(7, 0.4)
+    def knocked(self, enemy) -> None:
+        self.vfx.burst(enemy.pos, (200, 190, 170), 2, 50, 0.25, 3, 0)
+
+    def mark_vanish(self, tower) -> None:
+        """Mark disappears in a puff of smoke."""
+        self.audio.play("mark_vanish")
+        self.vfx.burst(tower.pos, (235, 235, 245), 26, 190, 0.6, 6, -30)
+        self.vfx.burst(tower.pos, (255, 214, 70), 14, 150, 0.5, 4, 0)
+        self.vfx.ring(tower.pos, 8, 64, 0.35, (255, 214, 70), 4)
+        self.vfx.pop(tower.pos, 80, (255, 230, 150), 0.3)
+        self.vfx.comic(tower.pos + pygame.Vector2(0, -44), "SWEEP!", (255, 214, 70), 40, 1.0)
+
+    def sweep_start(self, pos) -> None:
+        """The sweeper appears at the exit of the path."""
+        self.audio.play("mark_sweep")
+        self.vfx.ring(pos, 10, 80, 0.3, (255, 214, 70), 4)
+        self.vfx.pop(pos, 110, (255, 214, 70), 0.3)
+        self.vfx.flash((255, 230, 150), 50, 0.2)
+        self.vfx.shake(3, 0.2)
+
+    def sweep_run(self, pos, behind) -> None:
+        """Speed trail: sparks and streaks left behind the sweeper every simulation step."""
+        self.vfx.trail(pos + pygame.Vector2(random.uniform(-26, 26), random.uniform(-26, 26)), (255, 214, 70))
+        self.vfx.burst(behind + pygame.Vector2(random.uniform(-20, 20), random.uniform(-20, 20)), (255, 140, 60), 1, 60, 0.3, 4, 0)
+
+    def sweep_hit(self, enemy) -> None:
+        self.audio.play("sweep_hit")
+        self.vfx.burst(enemy.pos, (255, 214, 70), 8, 220, 0.3, 4, 0)
+        self.vfx.burst(enemy.pos, (255, 255, 255), 4, 140, 0.2, 3, 0)
+        self.vfx.ring(enemy.pos, 4, 30, 0.2, (255, 160, 60), 3)
+        self._hit_word(enemy.pos, 0.25)
+
+    def mark_reappear(self, tower) -> None:
+        """Mark is back at his spot."""
+        self.audio.play("mark_reappear")
+        self.vfx.ring(tower.pos, 6, 52, 0.4, (255, 255, 255), 4)
+        self.vfx.ring(tower.pos, 6, 76, 0.5, (255, 214, 70), 3)
+        self.vfx.pop(tower.pos, 70, (255, 240, 180), 0.35)
+        self.vfx.sparkle(tower.pos, (255, 214, 70), 16)
+        self.vfx.comic(tower.pos + pygame.Vector2(0, -44), "I'M BACK!", (255, 214, 70), 32, 0.9)
 
     def loom_reset(self, tower) -> None:
         self.audio.play("loom")

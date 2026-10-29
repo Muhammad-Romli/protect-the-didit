@@ -10,7 +10,7 @@ def warm_steps() -> Iterator[float]:
     from data.enemies import ENEMIES
     from data.settings import TOWER_RADIUS
     from data.towers import TOWERS
-    from game import sprites_proc as sp
+    from game import models, sprites_proc as sp
 
     total = len(ENEMIES) + len(TOWERS)
     done = 0
@@ -24,5 +24,11 @@ def warm_steps() -> Iterator[float]:
         yield done / total
     for kind, d in TOWERS.items():
         sp.tower_sprite(kind, TOWER_RADIUS, d["color"])
+        for path in (0, 1):  # costumes of every upgrade path/tier
+            for tier in range(1, 5):
+                look = (path, tier)
+                sp.tower_sprite(kind, TOWER_RADIUS, d["color"], look)
+                models.weapon_image(kind, look, 0, False)
+                models.projectile(kind, look)
         done += 1
         yield done / total

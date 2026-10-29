@@ -1,4 +1,4 @@
-"""Named special effects, registered by name: EFFECTS = {"chain_lightning": fn}.
+"""Named special effects, registered by name: EFFECTS = {"time_push": fn}.
 
 Every handler has the signature  fn(tower, game, hook, **ctx)  and ignores hooks it does
 not care about. Hooks (who calls them -> what the return value means):
@@ -19,50 +19,6 @@ from typing import Callable
 import pygame
 
 from data.effects import EFFECT_PARAMS
-
-
-def _nearest(enemies, point, exclude, max_dist):
-    best, best_d = None, max_dist
-    for e in enemies:
-        if e.alive and e not in exclude:
-            d = e.pos.distance_to(point)
-            if d <= best_d:
-                best, best_d = e, d
-    return best
-
-
-def _pierce(tower, game, hook, **ctx):
-    """Hammer goes through: also hits the closest enemy(ies) next to the target."""
-    if hook != "hit" or ctx["proj"].aoe_radius > 0 or not ctx["victims"]:
-        return None
-    p = EFFECT_PARAMS["pierce_1"]
-    victims, primary = ctx["victims"], ctx["victims"][0]
-    for _ in range(p["extra_targets"]):
-        nxt = _nearest(game.enemies, primary.pos, victims, p["radius"])
-        if nxt is None:
-            break
-        game.hit_enemy(nxt, ctx["proj"].damage, source=tower)
-        victims.append(nxt)
-    return None
-
-
-def _chain_lightning(tower, game, hook, **ctx):
-    """Lightning jumps from the target to nearby enemies, losing damage each jump."""
-    if hook != "hit" or ctx["proj"].aoe_radius > 0 or not ctx["victims"]:
-        return None
-    p = EFFECT_PARAMS["chain_lightning"]
-    victims, current = ctx["victims"], ctx["victims"][0]
-    damage = ctx["proj"].damage
-    for _ in range(p["jumps"]):
-        nxt = _nearest(game.enemies, current.pos, victims, p["range"])
-        if nxt is None:
-            break
-        damage *= p["falloff"]
-        game.add_bolt(current.pos, nxt.pos)
-        game.hit_enemy(nxt, damage, source=tower)
-        victims.append(nxt)
-        current = nxt
-    return None
 
 
 def _time_push(tower, game, hook, **ctx):
@@ -118,7 +74,17 @@ def _debuff(tower, game, hook, **ctx):
 
 
 def _marker(tower, game, hook, **ctx):
-    """Effects that are handled elsewhere (actives, Bima paths): registered so the UI knows they exist."""
+    """Effects that are handled elsewhere (actives, Bima paths, Mark's melee): registered so the UI knows they exist."""
+    return None
+
+
+def _mark_knockback(tower, game, hook, **ctx):
+    """Mark tier 2: every punch pushes the victims back along the path (bosses much less). See game/mark.py."""
+    if hook != "hit":
+        return None
+    from game import mark
+    for e in ctx["victims"]:
+        mark.knock_back(game, e)
     return None
 
 
@@ -190,10 +156,9 @@ EFFECTS: dict[str, Callable] = {
     "random_event": _random_event(False),
     "random_event_strong": _random_event(True),
     **{n: _marker for n in ("graph_axis", "graph_patterns", "graph_advanced", "geo_shapes", "geo_3d",
-                            "thunderstrike_active", "loom_reset_active", "nap_time_active",
+                            "loom_reset_active", "nap_time_active", "mark_melee", "mark_rage", "sweep_active",
                             "cube_active", "pyramid_active", "sphere_active")},
-    "pierce_1": _pierce,
-    "chain_lightning": _chain_lightning,
+    "mark_knockback": _mark_knockback,
     "time_push": _time_push,
     "speed_against_time": _speed_against_time,
     "armor_breaker": _armor_breaker,

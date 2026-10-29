@@ -13,7 +13,7 @@ python main.py
 - Tower cards (bottom bar): click Jalu / Romli / Zizi, then click the map to place. RMB / Esc cancels.
 - Click a tower: upgrade panel (Path A / Path B / Sell). Click empty ground to deselect.
 - Green START button (Space), orange speed button (F), pause button top-right (P). `R` restarts.
-- Debug: `F1` overlay, `F2` +$1000, `F3` skip to next wave.
+- Debug: `F1` overlay, `F2` +$1000, `F3` skip to next wave, `F4` free next upgrade on the selected tower.
 
 ## Display
 Resizable window; `F11` or `Alt+Enter` toggles fullscreen (the 1280x720 game is scaled to fit). Alt-tab pauses.

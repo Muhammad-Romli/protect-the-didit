@@ -1,11 +1,7 @@
 """Tunable parameters for the named special effects in game/effects.py."""
 
-BOLT_SECONDS = 0.18  # how long a chain-lightning line stays on screen
-
 EFFECT_PARAMS = {
-    # Jalu path A
-    "pierce_1": {"extra_targets": 1, "radius": 50},
-    "chain_lightning": {"jumps": 3, "range": 100, "falloff": 0.7},
+    # Jalu path A (Mark): all numbers are in data/mark.py
     # Jalu path B
     "time_push": {"chance": 0.20, "distance": 80},
     "speed_against_time": {"duration": 3.0},  # fast enemies walk at normal speed; refreshed by every hit

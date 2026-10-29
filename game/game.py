@@ -9,19 +9,18 @@ from typing import Optional
 import pygame
 
 from data.activities import ACTIVITIES, STACKS
-from data.effects import BOLT_SECONDS
 from data.map import MAP_CORNER_RADIUS, MAP_WAYPOINTS, STASH_POS
 from data.settings import (BOUNTY_MULT, BOUNTY_WAVE_GROWTH, BUILD_RECT, COLORS, DEBUG_KNOWLEDGE, DEBUG_MONEY, SPEED_STEPS,
                            INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, PATH_MIN_DISTANCE, PATH_WIDTH, PLAYFIELD_RECT,
                            PREP_GRACE_SECONDS, PREP_MAX_HP_MULT, PREP_MAX_SECONDS,
                            PREP_MAX_SPEED_MULT, SELL_CONFIRM_SECONDS, START_MONEY,
-                           START_STASH_HP, TOWER_RADIUS, WAVE_CLEAR_BONUS_BASE,
+                           SAVE_EVERY_WAVES, START_STASH_HP, TOWER_RADIUS, WAVE_CLEAR_BONUS_BASE,
                            WAVE_CLEAR_BONUS_PER_WAVE)
 from data.towers import TOWER_ORDER, TOWERS
 from data.waves import NEW_ENEMY_WAVES, SPECIAL_BONUS_MULT, SPECIAL_WAVES, WAVE_SCALING, WAVES
 from data.enemies import ENEMIES
 from data.effects import EFFECT_PARAMS
-from game import actives, bima, options as opts_mod, web
+from game import actives, bima, mark, options as opts_mod, savegame, web
 from game.effects import EFFECTS
 from game import gfx
 from game.assets import sprite
@@ -87,7 +86,6 @@ class Game:
         self.towers: list[Tower] = []
         self.enemies: list[Enemy] = []
         self.projectiles: list[Projectile] = []
-        self.bolts: list[list] = []  # [start, end, seconds_left] chain-lightning lines
         self.waves = WaveManager()
         self.prep_time = 0.0         # seconds spent in the current preparation phase
         self.battle_hp_mult = 1.0    # strength locked in when the current wave started
@@ -104,6 +102,7 @@ class Game:
         self.delayed: list[list] = []   # [seconds left, callable] one-shot timers (ability wind-ups)
         self.shots: list = []           # Bima curve shots in flight
         self.cubes: list = []           # Bima cubes (block the path)
+        self.sweeps: list = []          # Mark's running sweeps (see game/mark.py)
         self.zones: list = []           # Bima sphere trap zones
         self.shield, self.shield_t = 0.0, 0.0   # base shield (Bima sphere)
         self.hitstop, self.last_hitstop = 0.0, -9.0
@@ -264,6 +263,8 @@ class Game:
             self._cycle_target(-1 if pygame.key.get_mods() & pygame.KMOD_SHIFT else 1)
         elif key == pygame.K_F3:
             self._skip_wave()
+        elif key == pygame.K_F4 and self.selected:
+            self._debug_free_upgrade()
         elif key == pygame.K_p:
             self.paused = not self.paused
         elif key == pygame.K_SPACE:
@@ -282,7 +283,8 @@ class Game:
             self._request_sell()
 
     def _toggle_fullscreen(self) -> None:
-        if web.IS_WEB:  # the browser owns fullscreen (F11 / its own button)
+        if web.IS_WEB:
+            web.toggle_fullscreen()
             return
         try:
             pygame.display.toggle_fullscreen()
@@ -430,9 +432,26 @@ class Game:
         t.upgrade(path, paid=cost)
         self.fx.upgraded(t, up["name"], t.tiers[path])
 
+    def _debug_free_upgrade(self) -> None:
+        """Debug (F4): the selected tower gets its next upgrade for free, on the path it already follows
+        (path A for a fresh tower). Respects the path rules. Press up to 4 times for tier 4."""
+        t = self.selected
+        path = 0 if t.tiers[0] >= t.tiers[1] else 1
+        up = t.next_upgrade(path)
+        ok, reason = t.can_upgrade(path)
+        if up is None or not ok:
+            self.flash(reason or "Max tier")
+            return
+        t.upgrade(path, paid=0)
+        self.fx.upgraded(t, up["name"], t.tiers[path])
+
     def _request_sell(self) -> None:
         """First press arms the sale, a second press within SELL_CONFIRM_SECONDS sells."""
         t = self.selected
+        if t.vanished:  # Mark is away (Sweep): he has to come back first
+            self.flash(f"{t.name} is sweeping: wait for him to come back", 1.5)
+            self.fx.invalid()
+            return
         if self.sell_pending is t and self.sell_timer > 0:
             self.add_money(t.sell_value)
             self.fx.sold(t, t.sell_value)
@@ -517,10 +536,6 @@ class Game:
         enemy.take_damage(damage * self.damage_multiplier(enemy))
         self.fx.hit(enemy, color, source)
 
-    def add_bolt(self, a, b) -> None:
-        self.bolts.append([Vec(a), Vec(b), BOLT_SECONDS])
-        self.fx.zap(a, b)
-
     # --------------------------------------------------------------- update
     def update(self, dt: float) -> None:
         self.ui.update(dt, self.money, self)
@@ -551,6 +566,7 @@ class Game:
         for d in due:
             d[1]()
         bima.update_world(self, dt)
+        mark.update_world(self, dt)
         if self.phase == Phase.PREP:
             self.prep_time += dt
             self._tick_activities(dt)
@@ -577,9 +593,6 @@ class Game:
             if p.arrived:
                 self._resolve_hit(p)
         self.projectiles = [p for p in self.projectiles if not p.arrived]
-        for b in self.bolts:
-            b[2] -= dt
-        self.bolts = [b for b in self.bolts if b[2] > 0]
         self._collect_enemies()
 
         if self.state == State.PLAYING and self.waves.active \
@@ -643,7 +656,7 @@ class Game:
         if p.aoe_radius > 0:
             self.fx.aoe(p.pos, p.aoe_radius, p.color)
         self.add_money(p.money_on_hit)
-        if p.source is not None:  # on-hit effects (pierce, chain lightning, ...) may add victims
+        if p.source is not None:  # on-hit effects (time push, geometry stacks, knockback, ...) may add victims
             for name in p.source.effects:
                 fn = EFFECTS.get(name)
                 if fn is not None:
@@ -710,6 +723,19 @@ class Game:
         if self.waves.number >= self.waves.total:
             self.state = State.WON
             self.fx.won()
+            savegame.clear()  # a finished run has nothing to continue
+        elif self.waves.number % SAVE_EVERY_WAVES == 0:
+            if savegame.autosave(self):  # background checkpoint, between waves (nothing in flight)
+                self.flash(f"Game saved (wave {self.waves.number})", 3.5)
+
+    def load_save(self) -> bool:
+        """Continue from the last autosave (title screen). False if there is none or it is unusable."""
+        data = savegame.read()
+        if data is None or not savegame.restore(self, data):
+            return False
+        self.apply_options()
+        self.flash(f"Continued from wave {self.waves.number}", 4.0)
+        return True
 
     def _skip_wave(self) -> None:
         """Debug (F3): end the running wave without rewards drama, start the next."""
@@ -760,9 +786,9 @@ class Game:
         for p in self.projectiles:
             p.draw(w)
         bima.draw_world(w, self)
+        mark.draw_world(w, self)
         if self.selected is not None and self.selected.kind == "bima":
             bima.draw_preview(w, self.selected)
-        self._draw_bolts(w)
         self.fx.vfx.draw(w)
         self._draw_placement_preview(w)
         self._draw_aiming(w)
@@ -794,13 +820,6 @@ class Game:
         self.vignette.set_alpha(int(150 * level * pulse))
         screen.blit(self.vignette, self.playfield.topleft)
 
-    def _draw_bolts(self, surface: pygame.Surface) -> None:
-        for a, b, ttl in self.bolts:
-            mid = a.lerp(b, 0.5) + Vec(random.uniform(-6, 6), random.uniform(-6, 6))
-            pts = [(a.x, a.y), (mid.x, mid.y), (b.x, b.y)]
-            pygame.draw.lines(surface, (255, 245, 140), False, pts, 4)
-            pygame.draw.lines(surface, (255, 255, 255), False, pts, 2)
-
     def _draw_placement_preview(self, surface: pygame.Surface) -> None:
         if not self.placing or not self.build_rect.collidepoint(self.mouse_pos) or self.ui.hit_test(self.mouse_pos, self):
             return
@@ -825,7 +844,7 @@ class Game:
         pos = Vec(self.mouse_pos)
         if self.ui.hit_test(self.mouse_pos, self) is not None:
             return
-        radius = {"thunderstrike_active": cfg.get("radius", 95), "sphere_active": 90}.get(aid, 28)
+        radius = {"sphere_active": 90}.get(aid, 28)
         if aid == "cube_active":
             d, off = bima.nearest_path_distance(self.path, pos)
             snapped = self.path.position_at(d)

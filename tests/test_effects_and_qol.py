@@ -1,4 +1,4 @@
-"""Headless checks: Zizi unlocks, every effect hook, pause/hotkeys/sell confirm, random-bot fuzz.
+"""Headless checks: Zizi unlocks, every effect hook (Mark / Sweep: tests/test_mark.py), pause/hotkeys/sell confirm, random-bot fuzz.
 Run from the project folder:  python tests/test_effects_and_qol.py
 """
 import os, sys, random, tempfile
@@ -48,21 +48,6 @@ click(g, rects["zizi_pray"].center); assert z3.activity == "zizi_pray"; print("p
 
 # ---- B. effects
 random.seed(1)
-# pierce: A2 hits 1 extra neighbour only
-g = new(); j = tower(g, "jalu", (400, 160), (2, 0))
-a = enemy_at(g, "tanky", 300); b = enemy_at(g, "tanky", 320); c = enemy_at(g, "tanky", 340)
-fire(g, j, a); print("pierce hp:", a.hp, b.hp, c.hp, "(dmg", j.stats["damage"], ")")
-hit = [e for e in (a, b, c) if e.hp < 60]; assert len(hit) == 2 and a.hp < 60
-
-# chain lightning: A3, 3 jumps with falloff, bolts created
-g = new(); j = tower(g, "jalu", (400, 160), (3, 0))
-es = [enemy_at(g, "tanky", 300 + i * 25) for i in range(6)]
-fire(g, j, es[0]); dmg = j.stats["damage"]
-print("chain hp loss:", [round(60 - e.hp, 2) for e in es], "bolts:", len(g.bolts), "dmg", dmg)
-assert sum(1 for e in es if e.hp < 60) >= 4 and len(g.bolts) == 3
-assert abs((60 - es[0].hp) - dmg) < 1e-6
-g.draw()  # bolts render
-
 # time push + boss immune (force chance 1)
 EFFECT_PARAMS["time_push"]["chance"] = 1.0
 g = new(); j = tower(g, "jalu", (400, 160), (1, 3)); e = enemy_at(g, "normal", 500); boss = enemy_at(g, "boss", 500)
@@ -95,7 +80,7 @@ key(g, pygame.K_p); assert g.paused; d0 = e.distance; [g.update(1/60) for _ in r
 key(g, pygame.K_p); [g.update(1/60) for _ in range(60)]; assert e.distance > d0; print("pause OK")
 g = new(); key(g, pygame.K_1); assert g.placing == "jalu"; key(g, pygame.K_3); assert g.placing == "zizi"; key(g, pygame.K_3); assert g.placing is None
 key(g, pygame.K_SPACE); assert g.phase == Phase.BATTLE; print("hotkeys OK")
-g = new(); j = tower(g, "jalu", (400, 160)); g.selected = j; key(g, pygame.K_q); assert j.tiers == [1, 0]; key(g, pygame.K_w); assert j.tiers == [1, 1]
+g = new(); j = tower(g, "jalu", (400, 160)); g.selected = j; key(g, pygame.K_q); assert j.tiers == [1, 0]; key(g, pygame.K_w); assert j.tiers == [1, 0]  # Jalu: the other path is locked
 key(g, pygame.K_x); assert j in g.towers and g.sell_pending is j; key(g, pygame.K_x); assert j not in g.towers; print("sell confirm OK")
 g = new(); j = tower(g, "jalu", (400, 160)); g.selected = j; g.ui.layout(g); click(g, g.ui.sell_btn.center)
 [g.update(1/60) for _ in range(60 * 4)]; click(g, g.ui.sell_btn.center); assert j in g.towers; print("sell confirm expires OK")

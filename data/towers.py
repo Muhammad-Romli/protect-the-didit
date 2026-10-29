@@ -16,6 +16,8 @@ DEFAULT_STATS = {
     "money_per_hit": 0.0,
 }
 
+from data.mark import TIER_STATS as MARK_STATS
+
 TOWER_ORDER = ["jalu", "romli", "zizi", "bima"]
 
 
@@ -54,19 +56,21 @@ TOWERS = {
         ],
     },
     # ------------------------------------------------------------------ Jalu
+    # Path A = Mark, path B = Temporal Loom. Each Jalu UNIT is locked to one path (Tower.can_upgrade):
+    # the first upgrade bought in a path locks the other one for that unit.
     "jalu": {
         "name": "Jalu", "color": (80, 140, 255), "cost": 200,
         "stats": {"damage": 2, "cooldown": 0.8, "range": 150, "proj_speed": 450},
         "paths": [
-            {"name": "God of Thunder", "tiers": [
-                _up("Costume & hammer", 120, "More damage, slightly faster.",
-                    {"damage": 1, "cooldown": -0.1}, voice_line="jalu_a1"),
-                _up("Throw it", 300, "Throws the hammer: longer range, pierces 1 enemy.",
-                    {"range": 30, "damage": 1}, ["pierce_1"], "jalu_a2"),
-                _up("Real power", 500, "Chain lightning jumps to nearby enemies.",
-                    {"damage": 3, "range": 10}, ["chain_lightning"], "jalu_a3"),
-                _up("Thunderstrike", 1100, "Active: heavy AoE at a chosen point. Stronger attacks.",
-                    {"damage": 5, "cooldown": -0.2}, ["thunderstrike_active"], "jalu_a4"),
+            {"name": "Mark", "tiers": [   # numbers: data/mark.py, logic: game/mark.py
+                _up("Flying Punch", 120, "Short-range brawler. Much faster punches that hit a small area.",
+                    MARK_STATS[0], ["mark_melee"], "jalu_a1"),
+                _up("Viltrumite Strength", 300, "More damage. Hits knock Didits back (bosses barely move).",
+                    MARK_STATS[1], ["mark_knockback"], "jalu_a2"),
+                _up("Think, Mark!", 500, "Rage: more damage per consecutive hit on one target. Bigger radius.",
+                    MARK_STATS[2], ["mark_rage"], "jalu_a3"),
+                _up("Sweep", 1100, "Active: Mark vanishes, a sweeper runs the path backwards.",
+                    MARK_STATS[3], ["sweep_active"], "jalu_a4"),
             ]},
             {"name": "Temporal Loom Guy", "tiers": [
                 _up("Costume & scepter", 120, "Small damage and range boost.",

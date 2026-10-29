@@ -261,7 +261,7 @@ def pill(w: int, h: int, fill=(32, 20, 14), alpha: int = 170) -> pygame.Surface:
 
 # ------------------------------------------------------------------ icons
 def icon(name: str, size: int) -> pygame.Surface:
-    """Procedural HUD icons (supersampled): heart, coin, gear, play, ff, pause, book, bolt."""
+    """Procedural HUD icons (supersampled): heart, coin, gear, play, ff, pause, book, bolt, sweep."""
     key = ("icon", name, size)
     if key in _CACHE:
         return _CACHE[key]
@@ -319,6 +319,14 @@ def icon(name: str, size: int) -> pygame.Surface:
         pygame.draw.circle(surf, (110, 200, 235), (c, c), S * 0.37)
         pygame.draw.circle(surf, (190, 235, 255), (c - S * 0.08, c - S * 0.08), S * 0.22)
         pygame.draw.circle(surf, (255, 255, 255), (c - S * 0.14, c - S * 0.14), S * 0.07)
+    elif name == "sweep":  # Mark's Sweep: speed lines + arrowhead
+        for dy, ln in ((-0.26, 0.5), (0.0, 0.62), (0.26, 0.5)):
+            y = c + S * dy
+            pygame.draw.line(surf, ink, (c - S * 0.44, y), (c - S * 0.44 + S * ln, y), int(S * 0.15))
+            pygame.draw.line(surf, (255, 214, 70), (c - S * 0.44, y), (c - S * 0.44 + S * ln, y), int(S * 0.09))
+        head = [(c + S * 0.16, c - S * 0.36), (c + S * 0.46, c), (c + S * 0.16, c + S * 0.36)]
+        pygame.draw.polygon(surf, ink, [(c + (x - c) * 1.15 - S * 0.02, c + (y - c) * 1.15) for x, y in head])
+        pygame.draw.polygon(surf, (255, 255, 255), head)
     out = downscale(surf)
     _CACHE[key] = out
     return out

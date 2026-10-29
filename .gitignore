@@ -1,14 +1,38 @@
-# Virtual Environment
-.venv/
-bin/
-include/
-lib/
-lib64/
-pyvenv.cfg
+# --- pygbag / web build output ---
+build/
+*.apk
+*.tar.gz
 
-# Python cache / compiled files
+# --- Python ---
 __pycache__/
 *.py[cod]
+*.pyo
+*.egg-info/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# OS files
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Secrets / local config ---
+.env
+.env.*
+!.env.example
+
+# --- Editors / IDEs ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS junk ---
 .DS_Store
+Thumbs.db
+
+# --- Logs / temp ---
+*.log
+*.tmp

@@ -13,7 +13,7 @@ from data.towers import DEFAULT_STATS, TOWERS
 from game.effects import EFFECTS
 from game.enemy import Enemy
 from game.projectile import Projectile
-from game import bima, gfx, sprites_proc
+from game import bima, gfx, mark, models, sprites_proc
 from game.assets import sprite
 from game.utils import Vec, draw_outlined
 
@@ -44,9 +44,12 @@ class Tower:
         self.active_cd: dict[str, float] = {}   # ability id -> seconds until ready
         self.haste = (0.0, 0.0)                 # (seconds left, attack speed bonus) from random events
         self.fx_t = 0.0                         # ambient sparkle timer
+        self.vanished = False                   # Mark's Sweep: hidden, not attacking
         self.recompute_stats()
         if kind == "bima":
             bima.init_tower(self)
+        elif kind == "jalu":
+            mark.init_tower(self)
 
     # ---------------------------------------------------------------- stats
     def recompute_stats(self) -> None:
@@ -92,10 +95,18 @@ class Tower:
         tiers = self.data["paths"][path]["tiers"]
         return tiers[tier] if tier < len(tiers) else None
 
+    def is_path_locked(self, path: int) -> bool:
+        """Jalu only: once this unit has bought ANY upgrade in one path, the other path is locked for it
+        (no cross-pathing). Other towers keep the BTD6 rule in can_upgrade()."""
+        return self.kind == "jalu" and self.tiers[1 - path] > 0
+
     def can_upgrade(self, path: int) -> tuple[bool, str]:
-        """Rule: max(a, b) <= 4 and min(a, b) <= 1. Returns (ok, reason_if_blocked)."""
+        """Rule: max(a, b) <= 4 and min(a, b) <= 1 (Jalu: one path only, Bima: one path only).
+        Returns (ok, reason_if_blocked)."""
         if self.tiers[path] >= MAX_TIER:
             return False, "Max tier"
+        if self.is_path_locked(path):
+            return False, f"Locked: this Jalu follows path {'AB'[1 - path]}"
         new = list(self.tiers)
         new[path] += 1
         if min(new) > (0 if self.kind == "bima" else MAX_OFF_PATH_TIER):  # Bima: ONE path only
@@ -157,18 +168,26 @@ class Tower:
             game.fx.aura(self)
         if self.kind == "bima":
             bima.tick_tower(self, game, dt)
+        elif self.kind == "jalu":
+            mark.tick_tower(self)  # rage stacks end when the target dies / leaves the range
         rate = game.attack_speed_mult(self)  # Zizi auras
         if self.haste[0] > 0:
             rate += self.haste[1]
         if self.kind == "bima" and self.buff_timer > 0:
             rate += 0.6
         self.cooldown_left = max(0.0, self.cooldown_left - dt * rate)
-        if self.cooldown_left > 0:
+        if self.cooldown_left > 0 or self.vanished:  # Mark does not attack while he is away (Sweep)
             return
         target = self.pick_target(game.enemies)
         if target is None:
             return
         s = self.stats
+        if mark.is_mark(self):  # Mark: instant melee punch instead of a projectile
+            mark.punch(self, game, target)
+            self.cooldown_left = s["cooldown"]
+            self.kick = 0.1
+            self.aim = (target.pos - self.pos).normalize() if target.pos != self.pos else self.aim
+            return
         proj = Projectile(self.pos, target, s["proj_speed"], s["damage"], s["aoe_radius"],
                           s["slow"], s["slow_duration"], s["money_per_hit"], self.color, self)
         if self.kind == "bima":
@@ -181,10 +200,15 @@ class Tower:
 
     # ----------------------------------------------------------------- draw
     def draw_shadow(self, surface: pygame.Surface) -> None:
+        if self.vanished:
+            return
         gfx.blit_shadow(surface, (self.pos.x + 14, self.pos.y + 14), 66, 26, 105)
 
     def draw(self, surface: pygame.Surface, selected: bool = False) -> None:
         x, y = int(self.pos.x), int(self.pos.y)
+        if self.vanished:  # Mark is sweeping: no sprite, just a marker where he will return
+            mark.draw_vanished(surface, self, selected)
+            return
         if selected:  # pulsing ring on the ground under the pedestal
             pulse = 2 * math.sin(pygame.time.get_ticks() / 160)
             pygame.draw.ellipse(surface, (255, 255, 255), (x - 28 - pulse, y - 12 - pulse / 2, 56 + 2 * pulse, 28 + pulse), 3)
@@ -198,18 +222,21 @@ class Tower:
         img = sprite(f"towers/{self.kind}", 2 * TOWER_RADIUS + 10)  # optional PNG override
         custom = img is not None
         if not custom:
-            img = sprites_proc.tower_sprite(self.kind, TOWER_RADIUS, self.color)
+            img = sprites_proc.tower_sprite(self.kind, TOWER_RADIUS, self.color, models.look_of(self.kind, self.tiers))
         recoil = self.kick / 0.1
         weapon_first = self.aim.y < 0  # aiming up: wand goes behind the body
-        if not custom and weapon_first:
+        melee = mark.is_mark(self)  # Mark punches: no wand
+        if not custom and weapon_first and not melee:
             self._draw_wand(surface, x, y, recoil)
         if custom:
             surface.blit(img, img.get_rect(center=(x, y)))
         else:
             ox, oy = sprites_proc.tower_origin(TOWER_RADIUS)
             surface.blit(img, (x - ox, y - oy - round(2 * recoil)))  # tiny hop when firing
-        if not custom and not weapon_first:
+        if not custom and not weapon_first and not melee:
             self._draw_wand(surface, x, y, recoil)
+        if melee:
+            mark.draw_rage(surface, self, x, y)
         pips = [(STACKS[n]["color"]) for n, c in self.stacks.items() for _ in range(c)]
         for i, color in enumerate(pips):  # one pip per active stack, above the tower
             px = x - (len(pips) - 1) * 4 + i * 8
@@ -226,19 +253,21 @@ class Tower:
             pygame.draw.circle(surface, (38, 24, 18), (x + 20, y - 40), 9)
             pygame.draw.circle(surface, (255, 214, 70), (x + 20, y - 40), 7)
             pygame.draw.circle(surface, (255, 246, 190), (x + 18, y - 42), 3)
+        models.draw_companion(surface, self.kind, models.look_of(self.kind, self.tiers), x, y, pygame.time.get_ticks() / 1000)
         self._draw_tier_badge(surface, x, y)
 
     def _draw_wand(self, surface: pygame.Surface, x: int, y: int, recoil: float) -> None:
-        """Little glowing wand that follows the aim direction (visual only)."""
+        """Held weapon model (game/models.py) that follows the aim direction (visual only)."""
+        look = models.look_of(self.kind, self.tiers)
+        angle = -math.degrees(math.atan2(self.aim.y, self.aim.x))
+        img = models.weapon_image(self.kind, look, angle, self.aim.x < 0)
         hand = Vec(x + (14 if self.aim.x >= 0 else -14), y - 12)
-        length = 20 - 5 * recoil
-        tip = hand + self.aim * length
-        pygame.draw.line(surface, (30, 20, 24), hand, tip, 8)
-        pygame.draw.line(surface, gfx.shade(self.color, 0.75), hand, tip, 6)
-        pygame.draw.line(surface, gfx.tint(self.color, 0.45), hand + Vec(-1, -1), tip + Vec(-1, -1), 2)
-        orb = gfx.sphere(5, gfx.tint(self.color, 0.35), shine=1.0)
-        surface.blit(orb, orb.get_rect(center=(int(tip.x), int(tip.y))))
+        if img is None:
+            return
+        grip = hand - self.aim * (5 * recoil)
+        surface.blit(img, img.get_rect(center=(round(grip.x), round(grip.y))))
         if recoil > 0:
+            tip = hand + self.aim * 30
             glow = gfx.glow(16, (255, 240, 180), 200)
             surface.blit(glow, glow.get_rect(center=(int(tip.x), int(tip.y))))
 

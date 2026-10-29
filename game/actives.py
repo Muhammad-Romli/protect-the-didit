@@ -1,18 +1,18 @@
-"""Active skills: Jalu Thunderstrike / Loom Reset, Zizi Nap Time, Bima Cube / Pyramid / Sphere.
+"""Active skills: Jalu Sweep (Mark) / Loom Reset, Zizi Nap Time, Bima Cube / Pyramid / Sphere.
 
 A tower's actives are the effects it has that appear in ACTIVES. Aimed skills (aim=True) wait for a map click.
 Cooldowns tick in simulation time (Tower.active_cd). Usable during battle only.
 """
 from __future__ import annotations
 
+from data import mark as mark_cfg
 from data.bima import ABILITIES
-from game import bima
-from game.utils import Vec
+from game import bima, mark
 
 ACTIVES = {
-    "thunderstrike_active": {"name": "Thunderstrike", "cooldown": 30.0, "aim": True, "radius": 95, "dmg_mult": 6.0,
-                             "stun": 1.0, "color": (255, 240, 120), "icon": "bolt",
-                             "desc": "Click the map: lightning hits everything in the circle."},
+    "sweep_active": {"name": "Sweep", "cooldown": mark_cfg.SWEEP_COOLDOWN, "aim": False,
+                     "color": (255, 214, 70), "icon": "sweep",
+                     "desc": "Mark vanishes; a sweeper runs the path backwards, hitting every Didit."},
     "loom_reset_active": {"name": "Loom Reset", "cooldown": 35.0, "aim": False, "push": 160, "stun": 2.0,
                           "boss_slow": 0.5, "color": (130, 200, 255), "icon": "clock",
                           "desc": "Push back and freeze enemies in range (bosses are only slowed)."},
@@ -37,6 +37,8 @@ def can_use(game, tower, aid: str) -> tuple[bool, str]:
         return False, "Abilities work during a battle"
     if tower.active_cd.get(aid, 0.0) > 0:
         return False, f"{ACTIVES[aid]['name']} is recharging"
+    if tower.vanished:
+        return False, f"{tower.name} is already sweeping"
     if tower.kind == "bima" and tower.lockout > 0:
         return False, "Bima needs a moment between abilities"
     return True, ""
@@ -51,8 +53,8 @@ def use(game, tower, aid: str, pos=None) -> bool:
         return False
     cfg = ACTIVES[aid]
     fired = False
-    if aid == "thunderstrike_active":
-        fired = _thunder(game, tower, Vec(pos), cfg)
+    if aid == "sweep_active":
+        fired = mark.start_sweep(game, tower)
     elif aid == "loom_reset_active":
         fired = _loom(game, tower, cfg)
     elif aid == "nap_time_active":
@@ -70,20 +72,6 @@ def use(game, tower, aid: str, pos=None) -> bool:
     else:
         game.fx.invalid()
     return fired
-
-
-def _thunder(game, tower, pos: Vec, cfg) -> bool:
-    game.fx.thunder_warn(pos, cfg["radius"])
-    dmg = tower.stats["damage"] * cfg["dmg_mult"]
-
-    def strike():
-        game.fx.thunder_strike(pos, cfg["radius"])
-        for e in game.enemies:
-            if e.alive and e.pos.distance_to(pos) <= cfg["radius"] + e.radius:
-                game.hit_enemy(e, dmg, color=cfg["color"], source=tower)
-                e.stun(cfg["stun"])
-    game.delayed.append([0.45, strike])
-    return True
 
 
 def _in_range(game, tower):

@@ -58,7 +58,7 @@ Game alternates **PREPARATION** and **BATTLE**. Preparation comes before wave 1 
   - **Zizi** (built; each activity unlocks at **tier 2 of a path**: *Praying* at Recitation (A), *Slothing* at Sin of Sloth (B); because (2,2) is not allowed, one Zizi can only ever unlock one of them): *Slothing* gives **Laziness** stacks (+slow strength, +slow duration), *Praying* gives **Blessing** stacks (+damage, faster attacks). +1 stack every 5s, max 5 each; the activity auto-stops at max. Stacks last for the next battle only (`reset_on_wave_end` in `data/activities.py`). Switching Slothing <-> Praying on the same tower is allowed.
   - **Jalu** (built): *Larping* gives **+1 ball knowledge per second** (shared pool). Every Jalu upgrade tier costs money AND ball knowledge (10 / 25 / 60 / 120 per tier, `JALU_KNOWLEDGE_COSTS`).
   - **Romli (postponed until the rest of the game is ready):** farming; trading (read news, guess where prices move); solving code bugs (puzzles) for rewards.
-- Debug: `F2` also gives +100 ball knowledge.
+- Debug: `F2` also gives +100 ball knowledge. `F4` gives the selected tower its next upgrade for free (press 4x for tier 4).
 
 ## VFX / SFX (approved 2026-10-24, goal: Bloons TD 6 feel)
 Procedural, no downloads: `game/audio.py` synthesizes 25 sounds at startup (`assets/sfx/<name>.ogg|wav` overrides any of them, see `assets/sfx/README.txt`); `game/vfx.py` has particles, rings, floating text, comic words ("POW!"), screen shake/flash; `game/fx.py` maps game events to both. Game logic only calls `game.fx.<event>()`. `M` mutes. No music yet.
@@ -96,11 +96,12 @@ All numbers are tunable starting values (in `data/towers.py`).
 ### Jalu — BASE TOWER (build and finish this one first)
 - **Concept:** a larper who has never actually watched the movies but constantly talks about them. Sarcastic and funny.
 - **Base:** single-target, reliable. Cost 200, damage 2, cooldown 0.8s, range 150. (Base damage doubled 2026-10-24: simulations showed the original 1 was unwinnable by wave 7.) He just throws things.
-- **Path A — "God of Thunder" (Thor-style)**
-  1. **Costume & hammer:** wears the costume and holds a hammer. More damage, slightly shorter cooldown.
-  2. **Throw it:** throws the hammer / shoots lightning as a projectile. Longer range, pierces 1 enemy.
-  3. **Real power:** chain lightning that jumps to nearby enemies. Strong damage boost.
-  4. **Active skill + overall boost:** "Thunderstrike" active ability (button, ~30s cooldown): heavy AoE damage at a chosen point. Also stronger basic attacks.
+- **Per-unit path lock (Jalu only):** the first upgrade a Jalu unit buys in one path locks the other path for that unit (shown greyed with "LOCKED" in the tower panel). Several Jalus can take different paths. Other characters keep the BTD6 one-upgrade-on-the-other-path rule.
+- **Path A — "Mark" (Invincible-style melee brawler; replaced Thor on 2026-10-28).** All numbers: `data/mark.py`; logic: `game/mark.py`. Short range, very fast punches (instant, no projectile) that hit every Didit in a small radius; weak unless placed on path corners. Names are placeholders.
+  1. **Flying Punch:** large attack speed increase, range drops to melee, small hit radius.
+  2. **Viltrumite Strength:** more damage; every hit knocks Didits back along the path (bosses much less).
+  3. **Think, Mark!:** rage: each consecutive hit on the same target adds a damage stack (low bonus, capped); stacks reset when the target dies/leaves range/switches. Slightly bigger radius.
+  4. **Sweep (active, ~70s cooldown, battle phase only):** Mark vanishes (hidden, no attacks); a sweeper runs from the path exit toward the start at constant speed for a few seconds, hitting every Didit in its radius at most N times; Mark then reappears. Boss damage: `SWEEP_BOSS_DAMAGE_MULTIPLIER`.
 - **Path B — "Temporal Loom Guy" (Loki-style)**
   1. **Costume & scepter:** wears the costume and holds a scepter. Small damage + range boost.
   2. **Magic bolts:** shoots magic bolts that apply a short slow.
@@ -108,7 +109,7 @@ All numbers are tunable starting values (in `data/towers.py`).
   4. **Active skill + overall boost:** "Loom Reset" active ability (~35s cooldown): all enemies in range are pushed back and frozen for 2s. Also stronger basic attacks.
 - **Personality (voice lines):** a short speech bubble above Jalu appears on place, on each upgrade, and occasionally when shooting (max once per ~10s). He is sarcastic, overconfident, and gets movie references wrong. Keep lines in `data/dialogue.py`, 3–5 per upgrade/event, picked randomly. Example tone (rewrite freely):
   - Placed: "<plh>."
-  - Thor T1: "<plh>."
+  - Mark T1: "<plh>."
   - Loki T1: "<plh>."
   - Hits an enemy: "<plh>!"
   - Tier 4: "<plh>."
