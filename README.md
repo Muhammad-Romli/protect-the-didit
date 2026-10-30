@@ -35,19 +35,3 @@ Zizi: Slothing -> Laziness / Praying -> Blessing stacks (+1 per 5s, max 5, last 
 Jalu: Larping -> +1 ball knowledge/s, required (with money) for every Jalu upgrade.
 Tuning: `PREP_*` in `data/settings.py`.
 
-## Status: foundation (≈ Day 1–6 of the CLAUDE.md plan, Pass 1)
-Done: game loop, map, enemies (4 types), waves 1–10, placement, "first" targeting, projectiles
-(single-target + AoE + slow), money/HUD, win/lose, 3 towers, generic upgrade system with the
-(4,1) rule using stat modifiers only, sell (70%), per-second / per-wave income, money-per-hit.
-
-Preparation phase, 3-slot activities, Zizi stacks (unlocked by tier 2) and Jalu ball knowledge are done; Romli's activities are postponed.
-Effects done: pierce, chain lightning, time push, sleep, damage debuff, attack-speed auras, upgrade discount, boss-kill bonus (see CHANGELOG.md).
-
-Not done yet (data exists, behaviour doesn't): every named `effects` entry (pierce, chain lightning,
-time push, auras, random events, sleep, debuff, active skills), fusion, Jalu speech bubbles
-(`data/dialogue.py` is placeholders), sprites, sound, start screen. The upgrade panel marks tiers
-whose special effect is not implemented yet.
-
-- Extra keys: F cycles speed x1/x2/x3, T / Shift+T changes the selected tower's target priority, O or Esc opens Options (auto-start waves, volume, ...).
-
-- Bima (key 4): Graph path needs typing a formula (click the box, Enter fires, G repeats); Geometry path auto-attacks with shapes. Abilities E/C/V.
