@@ -1,48 +1,6 @@
-# --- pygbag / web build output ---
 build/
-*.apk
-*.tar.gz
-
-# --- Python ---
 __pycache__/
-*.py[cod]
-*.pyo
-*.egg-info/
-dist/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# --- Flat Virtual Environment ---
-bin/
-lib/
-lib64/
-pyvenv.cfg
-include/
-
-# --- Virtual environments ---
-.venv/
-venv/
-env/
-
-# --- Secrets / local config ---
-.env
-.env.*
-!.env.example
-
-# --- Editors / IDEs ---
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# --- OS junk ---
-.DS_Store
-Thumbs.db
-
-# --- Logs / temp ---
-*.log
-*.tmp
-
-# --- AI assistants ---
-CLAUDE.md
+*.pyc
+mobile/android/node_modules/
+mobile/android/android/
+mobile/android/www/

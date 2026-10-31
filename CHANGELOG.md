@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-31: phone support (NOT run: no pygame / phone in the session)
+- `game/touch.py` + `data/touch.py`: touch mode (auto-detected), ghost + OK / cancel placement, same for aimed abilities, drag a card onto the map, bigger tower pick radius, formula keypad for Bima Graph, tap to resume, PLAY AGAIN button, mouse_pos parked off-screen (no stuck hover).
+- `ui.py`: `set_touch()` (72 px gear, invisible hit margins on small panel buttons, touch hint texts); `bima_ui.py`: taller console in touch mode.
+- `web.py`: viewport meta, dvh sizing, "rotate your phone" overlay, first tap = fullscreen + landscape lock.
+- Packaging: `tools/make_mobile_web.py` (PWA), `tools/make_icons.py`, `mobile/`, Android wrapper + `.github/workflows/android-apk.yml`. Test: `tests/test_touch.py`. Docs: `MOBILE.md`.
+
 ## 2026-10-28 (2): models pass (NOT run: no pygame in the session, only compiled)
 - New `game/models.py`: costumes per upgrade path and tier (Jalu A Mark suit/mask/cape, Jalu B Loki suit/horns/cape + floating Temporal Loom, Romli A business shirt -> suit -> crown, Romli B hoodie/headphones/code screens, Zizi A shawl/halo, Zizi B pajamas/sleepy eyes/pillow, Bima A lab coat/pencil/hologram wave, Bima B orbiting shapes/laurel), held weapons (cardboard prop sword, scepter, fly swatter, prayer beads, compass), projectile models (rolled poster, magic bolt, bug, prayer-bead ring, equation spark), props (fist, loom, screen, pillow), Mark's running sprite for Sweep, fusion tower look.
 - Look changes: Jalu, Romli and Bima have brown skin (Zizi unchanged). Romli's glasses removed, short wavy hair. Zizi: medium straight hair (framing the face and falling behind the shoulders, beanie kept). Bima: very short buzz cut.

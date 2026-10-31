@@ -5,6 +5,7 @@ from __future__ import annotations
 import pygame
 
 from data.bima import GRAPH, PATTERNS
+from data.touch import GRAPH_TOUCH
 from data.settings import COLORS
 from game import bima, gfx
 from game.utils import draw_outlined, wrap_text
@@ -15,6 +16,7 @@ CYAN = (130, 215, 255)
 class GraphConsole:
     def __init__(self) -> None:
         self.focused = False
+        self.touch = False
         self.pattern_open = False
         self.pattern_i = 0
         self.param_i = 0
@@ -28,6 +30,17 @@ class GraphConsole:
                           for i in range(len(PATTERNS))]
         self.param_minus = pygame.Rect(self.popup.x + 150, self.popup.bottom - 52, 40, 34)
         self.param_plus = pygame.Rect(self.popup.x + 300, self.popup.bottom - 52, 40, 34)
+
+    def set_touch(self, on: bool) -> None:
+        """Taller buttons for fingers (rects from data/touch.py) or the original mouse sizes."""
+        self.touch = on
+        if on:
+            c = GRAPH_TOUCH
+            self.input, self.fire_btn, self.dir_btn = pygame.Rect(*c["input"]), pygame.Rect(*c["fire_btn"]), pygame.Rect(*c["dir_btn"])
+            self.pat_btn, self.bar = pygame.Rect(*c["pat_btn"]), pygame.Rect(*c["bar"])
+        else:
+            self.input, self.fire_btn, self.dir_btn = pygame.Rect(330, 648, 330, 34), pygame.Rect(668, 646, 96, 38), pygame.Rect(772, 646, 70, 38)
+            self.pat_btn, self.bar = pygame.Rect(850, 646, 118, 38), pygame.Rect(330, 690, 330, 18)
 
     def visible(self, game) -> bool:
         t = game.selected
@@ -119,7 +132,7 @@ class GraphConsole:
         img = font.render(show, True, (30, 24, 40))
         surface.blit(img, img.get_rect(midleft=(self.input.x + 10, self.input.centery)))
         if not txt and not self.focused:
-            hint = get_font(20).render("click and type, e.g.  2x   or   x^2/10", True, (150, 144, 160))
+            hint = get_font(20).render(("tap to type, e.g.  2x   or   x^2/10" if self.touch else "click and type, e.g.  2x   or   x^2/10"), True, (150, 144, 160))
             surface.blit(hint, hint.get_rect(midleft=(self.input.x + 10, self.input.centery)))
         # fire / direction / patterns
         ready = bima.can_fire_now(game, t)
@@ -127,7 +140,7 @@ class GraphConsole:
         draw_outlined(surface, "FIRE", self.fire_btn.center, 24, center=True, width=2)
         pygame.draw.rect(surface, (20, 14, 30), self.dir_btn.inflate(4, 4), border_radius=10)
         for i, d in enumerate((-1, 1)):
-            half = pygame.Rect(self.dir_btn.x + i * 35, self.dir_btn.y, 35, 38)
+            half = pygame.Rect(self.dir_btn.x + i * self.dir_btn.w // 2, self.dir_btn.y, self.dir_btn.w // 2, self.dir_btn.h)
             on = t.graph_dir == d
             pygame.draw.rect(surface, (255, 190, 80) if on else (70, 64, 90), half.inflate(-2, -2), border_radius=8)
             cx, cy = half.center

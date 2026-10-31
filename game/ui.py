@@ -20,6 +20,7 @@ import pygame
 from data.activities import ACTIVITIES, STACKS, activities_for
 from data.settings import (BAR_RECT, COLORS, INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, MAX_TIER, PREP_GRACE_SECONDS,
                            PREP_MAX_SECONDS, TOWER_RADIUS)
+from data.touch import TOUCH_GEAR, TOUCH_SLOP
 from data.towers import DEFAULT_STATS, TOWER_ORDER, TOWERS
 from data.waves import SPECIAL_WAVES, WAVES
 from game import gfx, options as opts_mod, sprites_proc
@@ -57,6 +58,7 @@ class UI:
         self.gear_btn = pygame.Rect(1214, 10, 58, 58)
         # upgrade panel (geometry is rebuilt by layout() for the selected tower)
         self.graph = GraphConsole()
+        self.touch = False           # phone layout (bigger gear button, finger-sized hit areas); see set_touch()
         self.ability_rects: list[tuple[str, pygame.Rect]] = []
         self.panel = pygame.Rect(0, 0, 0, 0)
         self.upgrade_btns = [pygame.Rect(0, 0, 0, 0), pygame.Rect(0, 0, 0, 0)]
@@ -76,6 +78,16 @@ class UI:
         self.popups: list[list] = []  # [text, color, age]
         self._pending = {"gain": 0.0, "spend": 0.0}
         self._pending_timer = {"gain": 0.0, "spend": 0.0}
+
+    def set_touch(self, on: bool) -> None:
+        """Switch between the mouse layout and the finger layout (called by game/touch.py)."""
+        self.touch = on
+        self.gear_btn = pygame.Rect(*(TOUCH_GEAR if on else (1214, 10, 58, 58)))
+        self.graph.set_touch(on)
+
+    def _hit(self, rect: pygame.Rect, pos, slop: int = TOUCH_SLOP) -> bool:
+        """collidepoint, with an invisible extra margin around small buttons when a finger is used."""
+        return (rect.inflate(2 * slop, 2 * slop) if self.touch else rect).collidepoint(pos)
 
     # ------------------------------------------------------------- money fx
     def money_change(self, amount: float) -> None:
@@ -193,15 +205,15 @@ class UI:
             return ("panel",)
         if game.selected is not None and (self.panel_open or self.slide > 0.02):
             for i, rect in enumerate(self.target_rects):
-                if rect.collidepoint(pos):
+                if self._hit(rect, pos):
                     return ("target", -1 if i == 0 else 1)
             for act_id, rect in self._act_rects:
-                if rect.collidepoint(pos):
+                if self._hit(rect, pos, 5):
                     return ("activity", act_id)
             for i, rect in enumerate(self.upgrade_btns):
                 if rect.collidepoint(pos):
                     return ("upgrade", i)
-            if self.sell_btn.collidepoint(pos):
+            if self._hit(self.sell_btn, pos):
                 return ("sell",)
             if self.panel.collidepoint(pos):
                 return ("noop",)
@@ -261,10 +273,12 @@ class UI:
                       GOLD if used else COLORS["text_dim"], anchor="midleft")
         total = game.waves.total  # round + pause (top-right)
         n = min(total, game.waves.number if game.waves.active else game.waves.number + 1)
-        draw_outlined(surface, "ROUND", (1204, 8), 20, (255, 255, 255), anchor="topright")
-        draw_outlined(surface, f"{n}/{total}", (1204, 24), 40, (255, 255, 255), anchor="topright", width=3)
+        rx = self.gear_btn.x - 10
+        draw_outlined(surface, "ROUND", (rx, 8), 20, (255, 255, 255), anchor="topright")
+        draw_outlined(surface, f"{n}/{total}", (rx, 24), 40, (255, 255, 255), anchor="topright", width=3)
         self._btn(surface, self.gear_btn, COLORS["btn_blue"], game, pressed=game.options_open)
-        surface.blit(gfx.icon("gear", 38), (self.gear_btn.x + 10, self.gear_btn.y + 9))
+        gi = gfx.icon("gear", 38)
+        surface.blit(gi, gi.get_rect(center=(self.gear_btn.centerx, self.gear_btn.centery - 1)))
 
     def _draw_banner(self, surface, game: "Game") -> None:
         """Top-centre: phase, timer and how strong the wave is."""
@@ -427,9 +441,13 @@ class UI:
 
     def _draw_toast(self, surface, game: "Game") -> None:
         text, dim = game.message, False
+        if not text and self.touch and (game.placing or game.aiming):
+            text = game.touch.hint()
         if not text and game.placing:
             d = TOWERS[game.placing]
             text = f"Placing {d['name']} (${d['cost']}) - click the map, right-click to cancel"
+        if not text and game.selected is None and self.touch:
+            text, dim = "Tap a card, then the map, to build.  Tap a tower to upgrade it.", True
         if not text and game.selected is None:
             text, dim = "1-3 place   Space start   P pause   F speed   Q/W upgrade   X sell   M mute   F11 fullscreen", True
         if not text:

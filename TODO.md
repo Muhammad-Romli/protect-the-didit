@@ -16,7 +16,7 @@
 - **Per-activity visuals** on the tower while Larping/Slothing/Praying (thought bubble, aura) instead of just the gold dot.
 - **Difficulty presets** (prep time and enemy ramp) — out of scope per CLAUDE.md (no difficulty modes).
 - **Bestiary / codex** page for Didit variants and tower lore.
-- **Gamepad or touch** input.
+- **Gamepad** input. (Touch: done, see MOBILE.md.)
 
 ## Dev tooling
 - Turn `tools/balance_bot.py` into a small CLI that sweeps prep times / builds and prints a table, run after every balance change.

@@ -15,6 +15,9 @@ python main.py
 - Green START button (Space), orange speed button (F), pause button top-right (P). `R` restarts.
 - Debug: `F1` overlay, `F2` +$1000, `F3` skip to next wave, `F4` free next upgrade on the selected tower.
 
+## Phone / tablet
+Touch controls (tap-to-place with OK/cancel, formula keypad, ...), PWA and APK build: see `MOBILE.md`.
+
 ## Display
 Resizable window; `F11` or `Alt+Enter` toggles fullscreen (the 1280x720 game is scaled to fit). Alt-tab pauses.
 

@@ -30,6 +30,7 @@ from game.fx import FX
 from game.projectile import Projectile
 from game import sprites_proc
 from game.tower import Tower
+from game.touch import Touch
 from game.ui import UI
 from game.utils import Path, Vec, draw_outlined, draw_range_circle, round_corners
 from game.wave_manager import WaveManager
@@ -64,6 +65,7 @@ class Game:
         self.options_open = False
         self.fps = 0.0
         self.mouse_pos = (0, 0)
+        self.touch = Touch(self)  # phone controls; inactive on desktop until a finger touches the screen
         self.reset()
         self.apply_options()
 
@@ -213,6 +215,8 @@ class Game:
 
     # ---------------------------------------------------------------- input
     def handle_event(self, event: pygame.event.Event) -> None:
+        if self.touch.handle_event(event):
+            return
         if event.type == pygame.MOUSEMOTION:
             self.mouse_pos = event.pos
             self._update_hover(event.pos)
@@ -313,7 +317,8 @@ class Game:
         elif actives.ACTIVES[aid]["aim"]:
             self.aiming = (t, aid)
             self.placing = None
-            self.flash(f"{actives.ACTIVES[aid]['name']}: click the map  (right-click cancels)", 2.5)
+            self.flash(f"{actives.ACTIVES[aid]['name']}: tap the map, then OK" if self.touch.enabled
+                       else f"{actives.ACTIVES[aid]['name']}: click the map  (right-click cancels)", 2.5)
         else:
             actives.use(self, t, aid)
 
@@ -321,6 +326,9 @@ class Game:
         action = self.ui.hit_test(pos, self)
         if action is None or action[0] != "g_focus":
             self.ui.graph.focused = False
+        if action is None and self.touch.enabled and (self.aiming is not None or self.placing):
+            self.touch.set_ghost(pos)   # finger: tap moves the ghost, the OK button confirms
+            return
         if action is None and self.aiming is not None:
             tower, aid = self.aiming
             if actives.use(self, tower, aid, pos):
@@ -496,10 +504,13 @@ class Game:
 
     def _tower_at(self, pos) -> Optional[Tower]:
         p = Vec(pos)
+        reach = TOWER_RADIUS + 12 + self.touch.pick_bonus()  # fingers are fatter than a cursor
+        best, best_d = None, reach + 1
         for t in reversed(self.towers):
-            if p.distance_to(t.pos + Vec(0, -12)) <= TOWER_RADIUS + 12:
-                return t
-        return None
+            d = p.distance_to(t.pos + Vec(0, -12))
+            if d <= reach and d < best_d:
+                best, best_d = t, d
+        return best
 
     # --------------------------------------------------------- effect hooks
     def effect_values(self, hook: str, **ctx) -> list[float]:
@@ -538,6 +549,7 @@ class Game:
 
     # --------------------------------------------------------------- update
     def update(self, dt: float) -> None:
+        self.touch.update(dt)
         self.ui.update(dt, self.money, self)
         self.message_timer -= dt
         self.sell_timer -= dt
@@ -801,8 +813,10 @@ class Game:
             self._draw_debug()
         elif self.options["fps"]:
             draw_outlined(self.screen, f"FPS {self.fps:.0f}", (1270, 620), 18, (255, 255, 120), anchor="bottomright", width=1)
+        if self.state == State.PLAYING:
+            self.touch.draw(s)
         if self.paused and self.state == State.PLAYING:
-            self._draw_banner_panel("PAUSED", "P or the pause button to resume", COLORS["gold"])
+            self._draw_banner_panel("PAUSED", "Tap to resume" if self.touch.enabled else "P or the pause button to resume", COLORS["gold"])
         if self.state != State.PLAYING:
             self._draw_end_screen()
 
@@ -872,6 +886,7 @@ class Game:
 
     def _draw_end_screen(self) -> None:
         if self.state == State.WON:
-            self._draw_banner_panel("YOU WIN!", "The stash is safe.  Press R to play again", COLORS["good"])
+            self._draw_banner_panel("YOU WIN!", "The stash is safe." if self.touch.enabled else "The stash is safe.  Press R to play again", COLORS["good"])
         else:
-            self._draw_banner_panel("GAME OVER", "The stash is gone.  Press R to restart", COLORS["bad"])
+            self._draw_banner_panel("GAME OVER", "The stash is gone." if self.touch.enabled else "The stash is gone.  Press R to restart", COLORS["bad"])
+        self.touch.draw(self.screen)
