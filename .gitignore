@@ -1,6 +1,40 @@
-build/
+# --- Virtual Environments (Python) ---
+# Excludes the local environment folders you found earlier
+bin/
+include/
+lib/
+lib64/
+pyvenv.cfg
+.venv/
+venv/
+env/
+ENV/
+
+# --- Python Build & Caches ---
 __pycache__/
 *.pyc
-mobile/android/node_modules/
-mobile/android/android/
-mobile/android/www/
+*.pyo
+*.pyd
+.pytest_cache/
+.htmlcov/
+htmlcov/
+.coverage
+
+# --- Project Specific Builds ---
+# Blocks build output files while keeping your 'assets' and 'game' source folders intact
+build/
+dist/
+*.egg-info/
+
+# --- OS Junk ---
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+
+# --- IDEs / Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+CLAUDE.md
