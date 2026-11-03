@@ -12,8 +12,9 @@ T1_RANGE_CHANGE = -75        # px added to Jalu's range 150 -> 75 (short range: 
 HIT_RADIUS = 28              # px: every Didit within this distance of the punched target is hit too
 
 # ---------------------------------------------------------- Tier 2: "Viltrumite Strength"
-T2_DAMAGE_BONUS = 1.0        # extra damage per punch (Jalu base damage is 2)
-KNOCKBACK_DISTANCE = 12      # px pushed back ALONG THE PATH by every punch (many punches per second: keep it small)
+T2_DAMAGE_BONUS = 0.5        # extra damage per punch (Jalu base damage is 2)
+KNOCKBACK_DISTANCE = 8      # px pushed back ALONG THE PATH by every punch (many punches per second: keep it small)
+KNOCKBACK_INTERVAL = 2.0     # seconds: one Didit can be knocked back at most once per this time (stops pin-in-place lock)
 KNOCKBACK_BOSS_MULT = 0.25   # bosses are pushed only this fraction of KNOCKBACK_DISTANCE
 
 # ------------------------------------------------------------- Tier 3: "Think, Mark!"

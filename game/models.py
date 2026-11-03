@@ -327,22 +327,19 @@ def _fused_headset(c: Ctx) -> None:
 
 # ========================================================================= hair
 def draw_hair(c: Ctx, kind: str, cos: dict) -> None:
-    """Hair, drawn after the head. Romli: short + wavy. Zizi: medium + straight (under the beanie). Bima: buzz cut."""
+    """Hair, drawn after the head. Romli: short + messy. Zizi: short, no hat. Bima: buzz cut."""
     st, r = c.st, c.r
     hair = st["hair"]
-    if kind == "romli":
-        c.put(_cut_below(gfx.sphere(0.68 * r, hair, shine=0.9), int(gfx.sphere(0.68 * r, hair).get_height() * 0.48)), 0, -1.50)
-        for i, x in enumerate((-0.54, -0.27, 0.0, 0.27, 0.54)):              # wavy crown
-            c.sph(0.2, hair, x, -2.06 + (0.0 if i % 2 else 0.07), 0.9)
-        for i, x in enumerate((-0.38, -0.1, 0.2, 0.46)):                      # wavy fringe over the forehead
-            c.sph(0.15, hair, x, -1.56 + (0.05 if i % 2 else 0.0), 0.9)
-        for sx in (-1, 1):                                                    # wavy sides
-            c.sph(0.13, hair, sx * 0.64, -1.46, 0.8)
-            c.sph(0.11, hair, sx * 0.62 + sx * 0.02, -1.33, 0.8)
+    if kind == "romli":                                                       # short, messy (2026-11-02)
+        cap = gfx.sphere(0.68 * r, hair, shine=0.6)
+        c.put(_cut_below(cap, int(cap.get_height() * 0.45)), 0, -1.42)
+        for x, h, lean in ((-0.52, 0.20, -0.10), (-0.30, 0.30, -0.06), (-0.06, 0.22, 0.04),
+                           (0.18, 0.32, 0.10), (0.42, 0.24, 0.12), (0.58, 0.14, 0.14)):   # uneven tufts, different heights
+            c.poly(hair, [(x - 0.12, -1.80), (x + lean, -1.80 - h - 0.04), (x + 0.12, -1.80)])
+        for x, y in ((-0.34, -1.64), (0.02, -1.68), (0.36, -1.62)):           # a few loose strands over the forehead
+            c.line(hair, (x, y), (x + 0.07, y + 0.12), 0.07)
         hi = gfx.tint(hair, 0.28)
-        for k in range(2):                                                    # wave highlights
-            pts = [(-0.5 + 0.1 * j, -1.98 + 0.28 * k + 0.05 * math.sin(j * 1.7 + k * 2)) for j in range(11)]
-            c.lines(hi, pts, 0.03)
+        c.lines(hi, [(-0.4, -1.84), (-0.1, -1.92), (0.2, -1.9)], 0.03)
         return
     if kind == "bima":
         cap = gfx.sphere(0.68 * r, hair, shine=0.5)
@@ -351,13 +348,14 @@ def draw_hair(c: Ctx, kind: str, cos: dict) -> None:
             a = math.pi * (1.05 + 0.9 * i / 13)
             c.circle(gfx.tint(hair, 0.22), 0.6 * math.cos(a), -1.32 + 0.6 * math.sin(a) * 1.0, 0.04)
         return
-    if kind == "zizi":
-        cap = _cut_below(gfx.sphere(0.74 * r, (130, 70, 180), shine=0.9), int(gfx.sphere(0.70 * r, hair).get_height() * 0.52))
-        c.put(cap, 0, -1.58)
-        pygame.draw.rect(c.cv, (190, 140, 230), (*c.P(-0.62, -1.50), 1.24 * c.u, 0.16 * c.u), border_radius=int(0.08 * c.u))
-        for sx in (-1, 1):                                                    # straight hair framing the face
-            c.ell(0.2, 0.62, hair, sx * 0.57, -1.12, shine=0.5)
-            c.line(gfx.tint(hair, 0.3), (sx * 0.52, -1.3), (sx * 0.52, -0.9), 0.025)
+    if kind == "zizi":                                                        # short hair, no hat (2026-11-02)
+        cap = gfx.sphere(0.69 * r, hair, shine=0.8)
+        c.put(_cut_below(cap, int(cap.get_height() * 0.46)), 0, -1.46)
+        for x, y in ((-0.40, -1.74), (-0.12, -1.80), (0.16, -1.78), (0.42, -1.72)):   # short cropped top
+            c.sph(0.15, hair, x, y, 0.8)
+        c.poly(hair, [(-0.52, -1.66), (0.34, -1.54), (0.5, -1.66), (0.1, -1.78)])     # short side-swept fringe
+        for sx in (-1, 1):                                                    # sideburns, above the ears
+            c.ell(0.1, 0.2, hair, sx * 0.62, -1.36, shine=0.5)
         return
     hair_img = gfx.sphere(0.70 * r, hair, shine=0.9)
     if cos.get("hair") == "slick":                                            # Loki: slicked-back black hair
@@ -371,11 +369,8 @@ def draw_hair(c: Ctx, kind: str, cos: dict) -> None:
 
 
 def hair_back(c: Ctx, kind: str) -> None:
-    """Zizi's long straight hair hangs behind the head, over the shoulders (drawn before the head)."""
-    if kind != "zizi":
-        return
-    for sx in (-1, 1):
-        c.ell(0.34, 1.0, c.st["hair"], sx * 0.56, -0.98, shine=0.4)
+    """Nothing hangs behind the head any more (Zizi's long hair was cut on 2026-11-02). Kept as a hook."""
+    return
 
 
 # =================================================================== weapons (held)
@@ -414,19 +409,34 @@ def _weapon_surface(kind: str, look) -> pygame.Surface | None:
         poly((250, 252, 255), [(6, -2.2), (28, -2.2), (31, -0.3), (6, -0.3)])
         for x in (10, 16, 22):  # blue tape
             pygame.draw.line(cv, (60, 120, 230), X(x, -3), X(x, 3), int(1.8 * S))
-    elif kind == "romli":                # fly swatter (swats bugs)
-        poly((40, 40, 52), [(-8, -1.5), (13, -1.5), (13, 1.5), (-8, 1.5)])
-        poly((150, 156, 170), [(-8, -0.8), (13, -0.8), (13, 0.2), (-8, 0.2)])
-        head = pygame.Rect(0, 0, 20 * S, 15 * S)
-        head.center = X(23)
-        pygame.draw.rect(cv, (60, 60, 76), head, border_radius=int(5 * S))
-        inner = head.inflate(-int(3.2 * S), -int(3.2 * S))
-        pygame.draw.rect(cv, (72, 210, 120), inner, border_radius=int(4 * S))
-        for i in range(1, 5):
-            pygame.draw.line(cv, (30, 120, 70), (inner.x + i * inner.w // 5, inner.y), (inner.x + i * inner.w // 5, inner.bottom), S)
-            pygame.draw.line(cv, (30, 120, 70), (inner.x, inner.y + i * inner.h // 5), (inner.right, inner.y + i * inner.h // 5), S)
-        pygame.draw.line(cv, (200, 255, 220), (inner.x + 2 * S, inner.y + 2 * S), (inner.x + 9 * S, inner.y + 2 * S), int(1.6 * S))
-    elif kind == "zizi":                 # prayer beads on a string, with a tassel
+    elif kind == "romli" and path == 1:  # programmer: laptop (screen + keyboard base, shown edge-on to the aim)
+        poly((150, 156, 170), [(-6, -2.4), (6, -2.4), (6, 2.4), (-6, 2.4)], (70, 76, 90), 0.8)        # keyboard base
+        poly((110, 116, 132), [(-5, -1.4), (5, -1.4), (5, 1.4), (-5, 1.4)])
+        poly((60, 66, 82), [(5, -8.5), (24, -8.5), (24, 8.5), (5, 8.5)], (30, 34, 44), 1.0)           # lid / screen bezel
+        poly((14, 22, 20), [(7, -6.8), (22, -6.8), (22, 6.8), (7, 6.8)])
+        for i, w in enumerate((10, 6, 9, 4, 8)):                                                       # lines of green code
+            poly((90, 255, 150), [(9, -5.4 + i * 2.5), (9 + w, -5.4 + i * 2.5), (9 + w, -4.4 + i * 2.5), (9, -4.4 + i * 2.5)])
+    elif kind == "romli":                # a fat stack of cash (base + business)
+        for k, dy in enumerate((2.6, 0.0, -2.6)):                                                      # three stacked bundles
+            poly((52, 120, 70), [(-6, dy - 3.4), (20, dy - 3.4), (20, dy + 3.4), (-6, dy + 3.4)], (24, 70, 40), 0.9)
+            poly((98, 196, 118), [(-5, dy - 2.4), (19, dy - 2.4), (19, dy + 2.4), (-5, dy + 2.4)])
+            ball(1.9, GOLD, 7, dy, 0.6)                                                                # coin on the note
+        poly((236, 236, 240), [(2, -9.4), (6, -9.4), (6, 9.4), (2, 9.4)], (150, 150, 160), 0.6)      # paper band round the stack
+    elif kind == "zizi" and path == 0:   # Recitation: a book (open it and read aloud)
+        poly((120, 60, 40), [(-4, -9), (22, -9), (22, 9), (-4, 9)], (60, 28, 16), 1.0)                # cover
+        poly((250, 240, 214), [(-2, -7.6), (21, -7.6), (21, 7.6), (-2, 7.6)], (200, 184, 150), 0.6)   # pages
+        poly((236, 190, 70), [(-4, -9), (0, -9), (0, 9), (-4, 9)], GOLD_D, 0.8)                       # gilded spine
+        for i in range(4):                                                                              # lines of text
+            poly((120, 110, 100), [(4, -4.8 + i * 3.2), (4 + 14 - i * 2, -4.8 + i * 3.2), (4 + 14 - i * 2, -4.0 + i * 3.2), (4, -4.0 + i * 3.2)])
+        ball(1.6, (230, 70, 70), 20, 6, 0.5)                                                            # ribbon bookmark
+    elif kind == "zizi" and path == 1:   # Sloth: a fluffy pillow
+        poly((176, 164, 224), [(-2, -10), (24, -10), (26, 0), (24, 10), (-2, 10), (0, 0)], (110, 98, 160), 1.0)
+        poly((214, 206, 244), [(0, -8), (22, -8), (23.5, 0), (22, 8), (0, 8), (1.5, 0)])
+        for cx, cy in ((-1, -9), (-1, 9), (25, -9), (25, 9)):                                           # corner tassels
+            ball(1.6, (255, 236, 150), cx, cy, 0.6)
+        for i in range(3):                                                                              # tiny moons/stars pattern
+            ball(0.9, (255, 236, 150), 6 + i * 6, -3 + (i % 2) * 6, 0.4)
+    elif kind == "zizi":                 # base Zizi: prayer beads on a string, with a tassel
         pts = [(2 + 3.7 * i, 4.5 * math.sin(i / 7 * math.pi)) for i in range(8)]
         pygame.draw.lines(cv, (150, 110, 60), False, [X(*p) for p in pts], max(1, int(0.9 * S)))
         for i, (x, y) in enumerate(pts):

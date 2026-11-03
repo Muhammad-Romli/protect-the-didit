@@ -80,8 +80,9 @@ def punch(tower: "Tower", game: "Game", target: "Enemy") -> None:
 
 def knock_back(game: "Game", enemy: "Enemy") -> None:
     """Push along the path. Bosses are not immune (unlike Enemy.push_back) but only move KNOCKBACK_BOSS_MULT as far."""
-    if not enemy.alive:
-        return
+    if not enemy.alive or game.time < getattr(enemy, "kb_ready_at", 0.0):
+        return  # per-Didit cooldown: otherwise 3 punches/s pin slow Didits in place forever (balance fix 2026-11-02)
+    enemy.kb_ready_at = game.time + cfg.KNOCKBACK_INTERVAL
     dist = cfg.KNOCKBACK_DISTANCE * (cfg.KNOCKBACK_BOSS_MULT if enemy.is_boss else 1.0)
     enemy.distance = max(0.0, enemy.distance - dist)
     enemy.pos = enemy.path.position_at(enemy.distance)

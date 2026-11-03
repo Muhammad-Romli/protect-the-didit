@@ -220,8 +220,12 @@ class Game:
         if event.type == pygame.MOUSEMOTION:
             self.mouse_pos = event.pos
             self._update_hover(event.pos)
-        elif event.type == pygame.WINDOWFOCUSLOST and self.state == State.PLAYING:
-            self.paused = True  # alt-tab pauses
+            if self.ui.graph.dragging:
+                self.ui.graph.drag(event.pos, self)   # drag-select inside Bima's formula box
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.ui.graph.release()
+        elif event.type == pygame.WINDOWFOCUSLOST and self.state == State.PLAYING and not web.IS_WEB:
+            self.paused = True  # alt-tab pauses (desktop only: browsers fire focus-lost on a click outside the canvas, devtools, etc.)
         elif event.type == pygame.KEYDOWN:
             if self.state == State.PLAYING and self.ui.graph.focused and self.ui.graph.key(event, self):
                 return  # typing a formula: no game hotkeys

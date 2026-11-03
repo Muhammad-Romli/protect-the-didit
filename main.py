@@ -6,6 +6,7 @@ The menu comes first on purpose: browsers only start audio after a click.
 """
 import asyncio
 import time
+import traceback
 
 import pygame
 
@@ -80,6 +81,18 @@ async def _load(screen: pygame.Surface, clock: pygame.time.Clock):
     return game
 
 
+def _draw_crash(screen: pygame.Surface, text: str) -> None:
+    """The game hit an unexpected error: show it instead of freezing, so the cause can be read and fixed."""
+    from game.utils import draw_outlined
+    panel = pygame.Rect(80, 120, 1120, 480)
+    pygame.draw.rect(screen, (40, 16, 20), panel, border_radius=16)
+    pygame.draw.rect(screen, (255, 110, 100), panel, 3, border_radius=16)
+    draw_outlined(screen, "The game hit an error (send this screenshot)", (panel.x + 24, panel.y + 18), 30, (255, 214, 70))
+    for i, line in enumerate(text.strip().splitlines()[-14:]):
+        draw_outlined(screen, line[:110], (panel.x + 24, panel.y + 66 + i * 26), 17, (255, 255, 255), width=1)
+    draw_outlined(screen, "Reload the page to start again (your save is kept).", (panel.x + 24, panel.bottom - 40), 20, (180, 230, 255), width=1)
+
+
 async def main() -> None:
     pygame.init()
     web.setup_page()  # browser: fit the canvas, smooth scaling, no right-click menu (no-op on desktop)
@@ -100,7 +113,7 @@ async def main() -> None:
     if choice == "continue" and not game.load_save():
         game.flash("Could not read the save: new game", 4.0)
 
-    slow_for, degraded = 0.0, False
+    slow_for, degraded, crash = 0.0, False, None
     running = True
     while running:
         frame_ms = clock.tick(FPS)
@@ -118,8 +131,15 @@ async def main() -> None:
                 running = False
             else:
                 game.handle_event(event)
-        game.update(dt)
-        game.draw()
+        try:
+            if crash is None:
+                game.update(dt)
+                game.draw()
+        except Exception:  # never die silently: show the real error on screen (and in the console) so it can be reported
+            crash = traceback.format_exc()
+            print(crash)
+        if crash is not None:
+            _draw_crash(screen, crash)
         pygame.display.flip()
         await asyncio.sleep(0)  # REQUIRED in the browser: hands control back to the page every frame
     pygame.quit()

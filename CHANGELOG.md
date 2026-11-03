@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-02 - feedback pass
+- **Look:** Romli: short messy hair (was wavy), now holds a stack of cash (base / Farm-Business path) or a laptop (Programmer path) instead of the fly swatter. Zizi: short hair, no beanie, no long back hair; she holds a book (Recitation path) or a pillow (Sloth path), the prayer beads stay for the base tower.
+- **Bima formula box:** real caret and selection: arrows, Home/End, Shift+arrows, double-click = select all, drag to select, Ctrl+A/C/X/V, Delete, key repeat while typing. New **AUTO** button (Graph Lv2+): aims at the first Didit in reach and fires, no typing or maths.
+- **Balance:** Mark T2 "Viltrumite Strength": knockback 12 -> 8 px, at most once per 2s per Didit (`KNOCKBACK_INTERVAL`), damage bonus +1 -> +0.5. Before, 3 punches/s pinned slow Didits in place and one Mark T2 alone cleared 40/40 tanky Didits.
+- **Performance:** range circles are cached, Bima's axis overlay blits only its bounding box (about 20% less frame time in a headless heavy-battle profile).
+- **Pause:** the browser build no longer auto-pauses on window focus loss (desktop still does). Unexpected errors now show on screen instead of freezing.
+- Tests: `tests/test_editing_balance.py`; `tests/test_touch.py` fixed (Bima now starts with the formula "x").
+
+
 ## 2026-10-31: phone support (NOT run: no pygame / phone in the session)
 - `game/touch.py` + `data/touch.py`: touch mode (auto-detected), ghost + OK / cancel placement, same for aimed abilities, drag a card onto the map, bigger tower pick radius, formula keypad for Bima Graph, tap to resume, PLAY AGAIN button, mouse_pos parked off-screen (no stuck hover).
 - `ui.py`: `set_touch()` (72 px gear, invisible hit margins on small panel buttons, touch hint texts); `bima_ui.py`: taller console in touch mode.

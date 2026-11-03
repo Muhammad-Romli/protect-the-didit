@@ -1,40 +1,71 @@
-# --- Virtual Environments (Python) ---
-# Excludes the local environment folders you found earlier
-bin/
-include/
-lib/
-lib64/
-pyvenv.cfg
+cat > .gitignore << 'EOF'
+# ---------- Virtual environment (venv lives in the project root) ----------
+/bin/
+/include/
+/lib/
+/lib64
+/share/
+/pyvenv.cfg
 .venv/
 venv/
 env/
-ENV/
 
-# --- Python Build & Caches ---
+# ---------- Python ----------
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.pytest_cache/
-.htmlcov/
-htmlcov/
-.coverage
-
-# --- Project Specific Builds ---
-# Blocks build output files while keeping your 'assets' and 'game' source folders intact
-build/
-dist/
+*.py[cod]
+*$py.class
+*.so
 *.egg-info/
-
-# --- OS Junk ---
-.DS_Store
-Thumbs.db
+.eggs/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .ipynb_checkpoints/
 
-# --- IDEs / Editors ---
+# ---------- Build output (pygbag etc.) ----------
+/build/
+*.apk
+*.wasm
+
+# ---------- Local game state ----------
+savegame.json
+*.log
+
+# ---------- Editors / OS ----------
 .vscode/
 .idea/
 *.swp
-*.swo
+*~
+.DS_Store
+Thumbs.db
 
+# ---------- Secrets ----------
+.env
+.env.*
+*.pem
+
+# ---------- AI tools ----------
 CLAUDE.md
+CLAUDE.local.md
+HANDOFF.md
+PYGBAG_HANDOFF.md
+AGENTS.md
+GEMINI.md
+.claude/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.aider*
+.codex/
+.gemini/
+.continue/
+.cline/
+.clinerules
+.roo/
+.copilot/
+.github/copilot-instructions.md
+EOF

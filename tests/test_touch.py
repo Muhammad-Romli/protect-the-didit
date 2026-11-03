@@ -42,6 +42,7 @@ tap(g, (300 + 38, 200)); assert g.selected is g.towers[0]
 # Bima Graph keypad
 g.selected = None
 b = Tower("bima", (700, 250)); b.tiers = [2, 0]; b.recompute_stats(); g.towers.append(b); g.selected = b
+b.formula = ""   # new Bima starts with the default "x"; this test types its own
 g.update(0.016); tap(g, g.ui.graph.input.center); assert g.touch.keypad_open()
 for label in ("2", "x", "+", "1"):
     k = [r for r, l, _, _ in g.touch.keys if l == label][0]; tap(g, k.center)

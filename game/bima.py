@@ -136,6 +136,32 @@ def fire_graph(game, t) -> bool:
     return True
 
 
+def auto_aim(game, t) -> bool:
+    """One-click aiming (no maths needed): types the straight line y = m*x that passes through the Didit that is
+    furthest along the path inside the graph's reach, and turns Bima toward it. True if a target was found."""
+    gt = graph_tier(t)
+    if gt < 2:
+        return False
+    reach = GRAPH["range_units"][gt] * UNIT
+    best = None
+    for e in game.enemies:
+        if not e.alive:
+            continue
+        dx, dy = e.pos.x - t.pos.x, t.pos.y - e.pos.y            # dy > 0 = above Bima (the y axis points up)
+        if abs(dx) < UNIT * 1.5 or abs(dx) > reach or abs(dy) > 10 * UNIT:
+            continue
+        if best is None or e.distance > best[0].distance:
+            best = (e, dx, dy)
+    if best is None:
+        return False
+    _, dx, dy = best
+    t.graph_dir = 1 if dx > 0 else -1
+    m = round(dy / dx, 3)                                        # slope in world units (both divided by UNIT)
+    t.formula = f"{m:g}*x"                                       # same slope for both sides (facing left, x is negative)
+    update_preview(t, force=True)
+    return True
+
+
 def _build_grid(enemies) -> dict:
     grid: dict = {}
     for e in enemies:
@@ -405,7 +431,10 @@ def draw_preview(surface: pygame.Surface, t) -> None:
     gt = graph_tier(t)
     if gt < 2:
         return
-    surface.blit(axis_surface(t.pos, surface.get_size(), gt), (0, 0))
+    rng = GRAPH["range_units"][gt] * UNIT
+    area = pygame.Rect(int(t.pos.x - rng) - 40, int(t.pos.y - 10 * UNIT) - 24, int(2 * rng) + 80, int(20 * UNIT) + 48)
+    area = area.clip(surface.get_rect())
+    surface.blit(axis_surface(t.pos, surface.get_size(), gt), area.topleft, area)   # only the grid's bounding box
     pv = update_preview(t)
     if not pv or "error" in pv:
         return
