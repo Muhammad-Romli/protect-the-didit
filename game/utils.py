@@ -85,12 +85,21 @@ def wrap_text(text: str, size: int, max_width: int) -> list[str]:
     return lines
 
 
+_RANGE_CACHE: dict = {}
+
+
 def draw_range_circle(surface: pygame.Surface, center, radius: float, color) -> None:
-    """Translucent filled circle with outline (for ranges / placement preview)."""
+    """Translucent filled circle with outline (for ranges / placement preview). Cached per (radius, color)."""
     r = int(radius)
-    tmp = pygame.Surface((2 * r + 4, 2 * r + 4), pygame.SRCALPHA)
-    pygame.draw.circle(tmp, (*color, 55), (r + 2, r + 2), r)
-    pygame.draw.circle(tmp, (*color, 170), (r + 2, r + 2), r, 2)
+    key = (r, tuple(color))
+    tmp = _RANGE_CACHE.get(key)
+    if tmp is None:
+        if len(_RANGE_CACHE) > 64:
+            _RANGE_CACHE.clear()
+        tmp = pygame.Surface((2 * r + 4, 2 * r + 4), pygame.SRCALPHA)
+        pygame.draw.circle(tmp, (*color, 55), (r + 2, r + 2), r)
+        pygame.draw.circle(tmp, (*color, 170), (r + 2, r + 2), r, 2)
+        _RANGE_CACHE[key] = tmp
     surface.blit(tmp, (center[0] - r - 2, center[1] - r - 2))
 
 
