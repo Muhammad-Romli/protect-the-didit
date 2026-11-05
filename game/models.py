@@ -536,6 +536,16 @@ def projectile(kind: str, look) -> tuple[pygame.Surface, float] | None:
         ball(7, (255, 160, 70), 0, 0)
         pygame.draw.lines(cv, (255, 255, 255), False, [X(-5 + i, 2.6 * math.sin(i * 0.9)) for i in range(11)], int(1.2 * S))
         out = (gfx.downscale(cv, S), 0.0)
+    elif kind == "fadhli":               # petanque boule; polished steel on Accuracy tier 3+
+        steel = bool(look and look[0] == 1 and look[1] >= 3)
+        col = (185, 205, 220) if steel else (205, 180, 125)
+        cv.blit(gfx.glow(12 * S, (120, 210, 255) if steel else (255, 200, 110), 150),
+                gfx.glow(12 * S, (120, 210, 255) if steel else (255, 200, 110), 150).get_rect(center=X(0)))
+        ball(8, col, 0, 0, 1.4)
+        pygame.draw.arc(cv, (255, 255, 245), pygame.Rect(*X(-5, -5), 10 * S, 10 * S), 0.4, 2.6, max(1, S))
+        if steel:
+            pygame.draw.line(cv, (100, 180, 220), X(-6, 5), X(6, -5), max(1, S))
+        out = (gfx.downscale(cv, S), 420.0 if steel else 180.0)
     else:
         out = None
     _CACHE[key] = out

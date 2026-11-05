@@ -26,7 +26,7 @@ Open `http://<your PC's IP>:8000` on the phone. (Some browsers only allow fullsc
 pygbag --build .
 python tools/make_mobile_web.py     # adds manifest, service worker, icons, phone meta tags to build/web
 ```
-Upload `build/web` to any HTTPS host (itch.io HTML5, GitHub Pages, Netlify). On the phone: browser menu -> Add to Home screen.
+Upload `build/web` to any HTTPS host (itch.io HTML5, GitHub Pages, Netlify). The repo also has `.github/workflows/pages.yml`: every push to `main` builds this and deploys it to GitHub Pages (enable Pages with source "GitHub Actions" in the repo settings). On the phone: browser menu -> Add to Home screen.
 It then starts fullscreen, landscape, with the hamster icon. After one full online run the service worker caches the files, so it also
 starts offline (the pygbag runtime is fetched from pygame-web.github.io the first time).
 

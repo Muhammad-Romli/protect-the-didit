@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-05: Fadhli + large damage numbers (reconstructed from the code, NOT run: no pygame in the session) and cleanup pass
+- **Fadhli** (petanque athlete, cost 350, key 5): Power path (Power throw, Sky shot, Hot crater, Meteor boule with the Meteor! active) and Accuracy path (Quick release, Triple bank, SPINNING SPINNING, Arigatou, Gyro with the Gyro active). Numbers in `data/fadhli.py`, logic in the new `game/fadhli.py`. Boule projectile model (steel on Accuracy tier 3+), original doodle stand gag, tornado ribbons for Spinned enemies.
+- **Large damage numbers:** `DAMAGE_STAGES` (`data/settings.py`) picks a font size and color for big hits in `Game.hit_enemy`; routine hits show nothing.
+- **Fixes to Fadhli:**
+  - Crater damage went through `hit_enemy` every frame: armor was stripped in a fraction of a second and hit sparks/sounds spammed. Craters now hit every `CRATER_TICK` (0.5s) for DPS x tick.
+  - Power T4 range 10175 made the range ring allocate a ~20000x20000 px surface when he was selected (about 1.6 GB). Infinite range now draws no ring and the stat line says "infinite".
+  - A Meteor shot whose target died in flight used up an empowered charge and made no crater; it is now refunded.
+  - Triple bank could jump to any enemy on the map; jumps are now limited to `BOUNCE_RADIUS` (140 px) from the last enemy hit, chain from enemy to enemy, and never hit the same enemy twice.
+  - Bounce hits skipped the 20/30/50 steel-ball roll and, during Gyro, gave bosses the full Spinned look; all hits now use the same status code (bosses keep the short look and are never stunned).
+  - Fadhli had no hotkey; `5` selects him.
+  - Meteor shots left and Gyro time left are now shown above the tower (pips / bar).
+  - Magic numbers moved to `data/fadhli.py` (cooldowns, 5s duration, x3.5, arc height; `POWER_COOLDOWN`, `GYRO_COOLDOWN`, `GYRO_DURATION` existed but were unused).
+- Tests: `tests/test_fadhli.py` (odds, bounce, crater ticks and armor, infinite range, three Meteor shots and refund, Golden Ratio ramp/reset, Spinned bosses, damage-number stages).
+- **Cleanup:** removed `hello.py` (empty), `game/audio-pygbag.py` (unused copy with Thor sounds and without Mark sounds; not importable because of the hyphen) and the empty `lib/` virtualenv skeleton; `.gitignore` started and ended with a pasted shell heredoc (`cat > .gitignore << 'EOF'` ... `EOF`), now removed. README, `CLAUDE.md`, `TODO.md`, and the sprites README no longer say Fadhli is unimplemented.
+
 ## 2026-11-02 - feedback pass
 - **Look:** Romli: short messy hair (was wavy), now holds a stack of cash (base / Farm-Business path) or a laptop (Programmer path) instead of the fly swatter. Zizi: short hair, no beanie, no long back hair; she holds a book (Recitation path) or a pillow (Sloth path), the prayer beads stay for the base tower.
 - **Bima formula box:** real caret and selection: arrows, Home/End, Shift+arrows, double-click = select all, drag to select, Ctrl+A/C/X/V, Delete, key repeat while typing. New **AUTO** button (Graph Lv2+): aims at the first Didit in reach and fires, no typing or maths.
@@ -87,3 +102,9 @@
 - QoL: pause, hotkeys, sell confirmation, tower stats line, hotkey labels on buttons, hotkey hints.
 - Upgrade price now goes through `Game.upgrade_cost` (discounts); sell value counts the price actually paid.
 - Tests run headless: all effects, unlocks, QoL, and 6 random-bot fuzz runs without errors.
+
+## 2026-11-05 - documentation cleanup and Fadhli design
+- Reworked `CLAUDE.md` to describe the current four-tower, 30-wave project instead of the obsolete two-week / 10-wave prototype plan.
+- Clarified implemented systems and tower-specific path restrictions; added the rule that every upgrade must improve at least one gameplay stat.
+- Added Fadhli's Power and Accuracy path design and large-damage number feedback as planned work, not implemented gameplay.
+- Updated `README.md` and pruned completed/outdated entries from `TODO.md`.

@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 import pygame
 
 from data.activities import ACTIVITIES, STACKS, activities_for
+from data.fadhli import INFINITE_RANGE
 from data.settings import (BAR_RECT, COLORS, INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, MAX_TIER, PREP_GRACE_SECONDS,
                            PREP_MAX_SECONDS, TOWER_RADIUS)
 from data.touch import TOUCH_GEAR, TOUCH_SLOP
@@ -32,6 +33,11 @@ if TYPE_CHECKING:
     from game.game import Game
 
 KNOWLEDGE_COLOR = (130, 215, 255)
+
+
+def _range_text(value: float) -> str:
+    """Range for the stat lines; Fadhli's Power T4 has infinite range."""
+    return "infinite" if value >= INFINITE_RANGE else f"{value:g}"
 GAIN_COLOR = (140, 255, 150)
 SPEND_COLOR = (255, 130, 120)
 GOLD = COLORS["gold"]
@@ -476,7 +482,7 @@ class UI:
     @staticmethod
     def _base_stats(stats: dict) -> str:
         s = {**DEFAULT_STATS, **stats}
-        parts = [f"Dmg {s['damage']:g}", f"CD {s['cooldown']:.1f}s", f"Range {s['range']:g}"]
+        parts = [f"Dmg {s['damage']:g}", f"CD {s['cooldown']:.1f}s", f"Range {_range_text(s['range'])}"]
         if s["aoe_radius"]:
             parts.append(f"AoE {s['aoe_radius']:g}")
         if s["slow"]:
@@ -489,7 +495,7 @@ class UI:
     @staticmethod
     def _stats_text(t) -> str:
         s = t.stats
-        parts = [f"Dmg {s['damage']:g}", f"CD {s['cooldown']:.2f}s", f"Range {s['range']:g}"]
+        parts = [f"Dmg {s['damage']:g}", f"CD {s['cooldown']:.2f}s", f"Range {_range_text(s['range'])}"]
         if s["aoe_radius"] > 0:
             parts.append(f"AoE {s['aoe_radius']:g}")
         if s["slow"] > 0:
