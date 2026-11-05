@@ -13,7 +13,7 @@ from data.towers import DEFAULT_STATS, TOWERS
 from game.effects import EFFECTS
 from game.enemy import Enemy
 from game.projectile import Projectile
-from game import bima, gfx, mark, models, sprites_proc
+from game import bima, fadhli, gfx, mark, models, sprites_proc
 from game.assets import sprite
 from game.utils import Vec, draw_outlined
 
@@ -45,6 +45,9 @@ class Tower:
         self.haste = (0.0, 0.0)                 # (seconds left, attack speed bonus) from random events
         self.fx_t = 0.0                         # ambient sparkle timer
         self.vanished = False                   # Mark's Sweep: hidden, not attacking
+        self.power_shots = 0
+        self.gyro_timer = 0.0
+        self.golden_damage = 0.0
         self.recompute_stats()
         if kind == "bima":
             bima.init_tower(self)
@@ -156,6 +159,8 @@ class Tower:
         self.kick = max(0.0, self.kick - dt)
         for aid in list(self.active_cd):
             self.active_cd[aid] = max(0.0, self.active_cd[aid] - dt)
+        if self.kind == "fadhli":
+            fadhli.tick(self, dt)
         if self.haste[0] > 0:
             self.haste = (self.haste[0] - dt, self.haste[1])
         for name in self.effects:  # per-frame effect hooks (e.g. Romli's random events)
@@ -188,10 +193,15 @@ class Tower:
             self.kick = 0.1
             self.aim = (target.pos - self.pos).normalize() if target.pos != self.pos else self.aim
             return
-        proj = Projectile(self.pos, target, s["proj_speed"], s["damage"], s["aoe_radius"],
+        damage, empowered = s["damage"], False
+        if self.kind == "fadhli":
+            damage, empowered = fadhli.next_shot(self)
+        proj = Projectile(self.pos, target, s["proj_speed"], damage, s["aoe_radius"],
                           s["slow"], s["slow_duration"], s["money_per_hit"], self.color, self)
         if self.kind == "bima":
             bima.prepare_projectile(self, game, target, proj)
+        if self.kind == "fadhli":
+            fadhli.prepare_projectile(self, proj, empowered)
         game.projectiles.append(proj)
         self.cooldown_left = s["cooldown"]
         self.kick = 0.1
@@ -254,6 +264,10 @@ class Tower:
             pygame.draw.circle(surface, (255, 214, 70), (x + 20, y - 40), 7)
             pygame.draw.circle(surface, (255, 246, 190), (x + 18, y - 42), 3)
         models.draw_companion(surface, self.kind, models.look_of(self.kind, self.tiers), x, y, pygame.time.get_ticks() / 1000)
+        if self.kind == "fadhli":
+            if self.tiers[1] >= 3:
+                fadhli.draw_stand_gag(surface, self, x, y)
+            fadhli.draw_state(surface, self, x, y)
         self._draw_tier_badge(surface, x, y)
 
     def _draw_wand(self, surface: pygame.Surface, x: int, y: int, recoil: float) -> None:

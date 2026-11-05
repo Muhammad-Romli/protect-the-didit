@@ -18,7 +18,7 @@ DEFAULT_STATS = {
 
 from data.mark import TIER_STATS as MARK_STATS
 
-TOWER_ORDER = ["jalu", "romli", "zizi", "bima"]
+TOWER_ORDER = ["jalu", "romli", "zizi", "bima", "fadhli"]
 
 
 def _up(name, cost, description, stat_mods=None, effects=None, voice_line=None):
@@ -27,6 +27,24 @@ def _up(name, cost, description, stat_mods=None, effects=None, voice_line=None):
 
 
 TOWERS = {
+    "fadhli": {
+        "name": "Fadhli", "color": (205, 190, 150), "cost": 350,
+        "stats": {"damage": 3, "cooldown": 1.15, "range": 175, "proj_speed": 520},
+        "paths": [
+            {"name": "Power", "tiers": [
+                _up("Power throw", 180, "A heavier boule deals more damage.", {"damage": 2}),
+                _up("Sky shot", 380, "High arcing shot; slower, much stronger and reaches far.", {"damage": 7, "cooldown": 0.9, "range": 180}, ["fadhli_sky"]),
+                _up("Hot crater", 650, "Impacts leave a burning crater that damages enemies over time.", {"damage": 4}, ["fadhli_crater"]),
+                _up("Meteor boule", 1400, "Permanent infinite range. Activate to empower the next three shots and their craters.", {"damage": 8, "range": 10000}, ["fadhli_power_active"]),
+            ]},
+            {"name": "Accuracy", "tiers": [
+                _up("Quick release", 180, "Faster throws.", {"damage": 0.5, "cooldown": -0.25}),
+                _up("Triple bank", 380, "Bounce between three enemies; faster attacks.", {"damage": 1, "cooldown": -0.2}, ["fadhli_bounce"]),
+                _up("SPINNING SPINNING", 650, "Steel boule: 20% short stun, 30% slow, 50% no effect. Original doodle stand gag.", {"damage": 2, "cooldown": -0.1}, ["fadhli_spin"]),
+                _up("Arigatou, Gyro", 1400, "Passive damage and speed. Activate 5s of spinning tornadoes and Golden Ratio shots.", {"damage": 2, "cooldown": -0.1}, ["fadhli_gyro_active"]),
+            ]},
+        ],
+    },
     # Bima the Mathematician: path A = Graph (formula curves), path B = Geometry (shape stacks).
     # Only ONE path can be used (Tower.can_upgrade). Numbers: data/bima.py, logic: game/bima.py.
     "bima": {

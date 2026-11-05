@@ -20,7 +20,8 @@ from data.towers import TOWER_ORDER, TOWERS
 from data.waves import NEW_ENEMY_WAVES, SPECIAL_BONUS_MULT, SPECIAL_WAVES, WAVE_SCALING, WAVES
 from data.enemies import ENEMIES
 from data.effects import EFFECT_PARAMS
-from game import actives, bima, mark, options as opts_mod, savegame, web
+from data.fadhli import INFINITE_RANGE
+from game import actives, bima, fadhli, mark, options as opts_mod, savegame, web
 from game.effects import EFFECTS
 from game import gfx
 from game.assets import sprite
@@ -106,6 +107,7 @@ class Game:
         self.cubes: list = []           # Bima cubes (block the path)
         self.sweeps: list = []          # Mark's running sweeps (see game/mark.py)
         self.zones: list = []           # Bima sphere trap zones
+        self.craters: list[list] = []   # Fadhli: [position, radius, dps, seconds left, source, seconds since last hit]
         self.shield, self.shield_t = 0.0, 0.0   # base shield (Bima sphere)
         self.hitstop, self.last_hitstop = 0.0, -9.0
         self.aiming = None              # (tower, ability id) while waiting for a map click
@@ -279,7 +281,7 @@ class Game:
             self._start_battle()
         elif key == pygame.K_f:
             self._toggle_speed()
-        elif key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4):
+        elif key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5):
             self._choose_shop(TOWER_ORDER[key - pygame.K_1])
         elif key in (pygame.K_e, pygame.K_c, pygame.K_v) and self.selected:
             self.use_ability((pygame.K_e, pygame.K_c, pygame.K_v).index(key))
@@ -548,7 +550,15 @@ class Game:
             hits = EFFECT_PARAMS["armor_breaker"]["hits"] if source is not None and "armor_breaker" in source.effects else 1
             self.fx.armor_hit(enemy, enemy.break_armor(hits), hits)
             return
-        enemy.take_damage(damage * self.damage_multiplier(enemy))
+        dealt = damage * self.damage_multiplier(enemy)
+        enemy.take_damage(dealt)
+        from data.settings import DAMAGE_STAGES
+        stage = next((cfg for cfg in reversed(DAMAGE_STAGES) if dealt >= cfg[0]), None)
+        if stage:
+            _, size, stage_color = stage
+            # Tiny deterministic stagger helps separate simultaneous large-hit labels.
+            offset = ((len(self.fx.vfx.labels) % 5) - 2) * 8
+            self.fx.vfx.text(enemy.pos + Vec(offset, -18), f"{int(round(dealt))}", stage_color, size, 0.85, 38)
         self.fx.hit(enemy, color, source)
 
     # --------------------------------------------------------------- update
@@ -598,11 +608,14 @@ class Game:
             self.spawn_enemy(kind)
         for e in self.enemies:
             e.update(dt)
+            if getattr(e, "spinned_timer", 0.0) > 0:
+                e.spinned_timer = max(0.0, e.spinned_timer - dt)
             if e.slow_timer > 0 and random.random() < dt * 5:
                 self.fx.vfx.trail(e.pos + Vec(random.uniform(-6, 6), random.uniform(-6, 6)), (150, 200, 255))
         for t in self.towers:
             t.update(dt, self)
             self._tick_income(t, dt)
+        fadhli.tick_craters(self, dt)
         for p in self.projectiles:
             p.update(dt)
             self.fx.trail(p)
@@ -665,10 +678,17 @@ class Game:
                        if e.alive and e.pos.distance_to(p.pos) <= p.aoe_radius + e.radius]
         else:
             victims = [p.target] if p.target.alive else []
+        boule = p.source is not None and p.source.kind == "fadhli"
         if not victims:
+            if boule:
+                fadhli.on_miss(p)   # target died in flight: an empowered shot is not used up
             return
         for e in victims:
+            if boule:
+                fadhli.apply_status(e, p.source, p.gyro)
             self.hit_enemy(e, p.damage, p.slow, p.slow_duration, p.color, p.source)
+        if boule:
+            fadhli.after_hit(self, p, victims)
         if p.aoe_radius > 0:
             self.fx.aoe(p.pos, p.aoe_radius, p.color)
         self.add_money(p.money_on_hit)
@@ -789,7 +809,8 @@ class Game:
         self._draw_stash_glow(w)
         self.fx.vfx.draw_ambient(w)
         if self.selected:
-            draw_range_circle(w, self.selected.pos, self.selected.stats["range"], (255, 255, 255))
+            if self.selected.stats["range"] < INFINITE_RANGE:   # infinite range (Fadhli Power T4): no ring
+                draw_range_circle(w, self.selected.pos, self.selected.stats["range"], (255, 255, 255))
         # depth sorting: all shadows first, then towers + enemies back-to-front by y
         things = sorted([*self.towers, *self.enemies], key=lambda o: o.pos.y)
         for o in things:
@@ -801,6 +822,9 @@ class Game:
                 o.draw(w)
         for p in self.projectiles:
             p.draw(w)
+        for pos, radius, *_ in self.craters:
+            pygame.draw.circle(w, (125, 45, 20), (int(pos.x), int(pos.y)), int(radius), 2)
+            pygame.draw.circle(w, (255, 115, 35), (int(pos.x), int(pos.y)), max(2, int(radius * 0.25)), 1)
         bima.draw_world(w, self)
         mark.draw_world(w, self)
         if self.selected is not None and self.selected.kind == "bima":

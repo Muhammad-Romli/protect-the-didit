@@ -5,6 +5,7 @@ import math
 
 import pygame
 
+from data.fadhli import SKY_ARC_HEIGHT
 from game import gfx, models, sprites_proc
 from game.assets import sprite
 from game.enemy import Enemy
@@ -29,8 +30,16 @@ class Projectile:
         self.color = color
         self.source = source  # firing Tower (its effects run on hit)
         self.arrived = False
+        self.high_arc = False
+        self.bounces = 0
+        self.hit_ids: set[int] = set()
+        self.power_crater = False
+        self.make_crater = False
+        self.gyro = False
+        self.flight_time = 0.0
 
     def update(self, dt: float) -> None:
+        self.flight_time += dt
         if self.target.alive:
             self.dest = Vec(self.target.pos)  # homing while the target lives
         to_dest = self.dest - self.pos
@@ -42,7 +51,12 @@ class Projectile:
             self.pos += to_dest.normalize() * step
 
     def draw(self, surface: pygame.Surface) -> None:
-        x, y = int(self.pos.x), int(self.pos.y)
+        draw_pos = Vec(self.pos)
+        if self.high_arc:
+            total = max(1.0, Vec(self.target.pos).distance_to(Vec(self.source.pos)) if self.source else 1.0)
+            progress = min(1.0, self.flight_time * self.speed / total)
+            draw_pos.y -= math.sin(progress * math.pi) * SKY_ARC_HEIGHT
+        x, y = int(draw_pos.x), int(draw_pos.y)
         kind = self.source.kind if self.source is not None else None
         img = sprite(f"projectiles/{kind}", 16) if kind else None
         if img is not None:
@@ -70,6 +84,8 @@ class Projectile:
                 gfx.blit_shadow(surface, (x + 5, y + 13), 20, 9, 80)
                 img = pygame.transform.rotate(spr, ang)
                 surface.blit(img, img.get_rect(center=(x, y)))
+                if self.high_arc:
+                    pygame.draw.ellipse(surface, (255, 225, 170), (x - 8, y - 14, 16, 4), 1)
                 return
         r = 7 if self.aoe_radius > 0 else 5
         gfx.blit_shadow(surface, (x + 5, y + 13), r * 2.4, r * 1.1, 80)   # shadow stays on the ground: the shot floats

@@ -5,6 +5,10 @@ SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 MAX_DT = 0.05  # clamp so a lag spike never teleports enemies
 
+# Damage popups appear only for large hits; fonts and colors escalate by stage.
+DAMAGE_STAGES = ((8, 20, (255, 210, 70)), (18, 25, (255, 115, 35)),
+                 (40, 31, (230, 35, 45)), (80, 39, (110, 20, 70)))
+
 # Layout as (x, y, w, h). BTD6-style: the map fills the whole window, the HUD floats on top,
 # a wooden bar sits at the bottom. Towers can only be placed above the bar (BUILD_RECT).
 PLAYFIELD_RECT = (0, 0, 1280, 720)

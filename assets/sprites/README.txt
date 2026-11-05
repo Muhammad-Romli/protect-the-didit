@@ -1,10 +1,10 @@
 Optional sprites. Missing files = the colored placeholder is used.
 PNG or WEBP with transparency. Names (without extension) and what they replace:
 
-  towers/jalu  towers/romli  towers/zizi     tower body (drawn ~42 px tall)
+  towers/jalu  towers/romli  towers/zizi  towers/bima  towers/fadhli     tower body (drawn ~42 px tall)
   enemies/normal fast tanky boss trojan trojan_trojan rich speedster reinforced             hamsters (drawn ~30/26/40/64 px tall)
                                               face RIGHT in the image; the game flips them when walking left
-  projectiles/jalu  projectiles/romli  projectiles/zizi   shots (~16 px), pointing RIGHT
+  projectiles/jalu  projectiles/romli  projectiles/zizi  projectiles/bima  projectiles/fadhli   shots (~16 px), pointing RIGHT
   stash                                       the Snack Stash (drawn ~48 px tall)
   (background override was removed: the map is baked by game/scenery.py)
 

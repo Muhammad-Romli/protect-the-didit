@@ -5,11 +5,13 @@ Cooldowns tick in simulation time (Tower.active_cd). Usable during battle only.
 """
 from __future__ import annotations
 
-from data import mark as mark_cfg
+from data import fadhli as fadhli_cfg, mark as mark_cfg
 from data.bima import ABILITIES
-from game import bima, mark
+from game import bima, fadhli, mark
 
 ACTIVES = {
+    "fadhli_power_active": {"name": "Meteor!", "cooldown": fadhli_cfg.POWER_COOLDOWN, "aim": False, "color": (255, 100, 40), "icon": "fire", "desc": "Empower the next three shots; each makes a huge, damaging crater."},
+    "fadhli_gyro_active": {"name": "Arigatou, Gyro", "cooldown": fadhli_cfg.GYRO_COOLDOWN, "aim": False, "color": (100, 220, 230), "icon": "clock", "desc": "5s of Spinned tornadoes and Golden Ratio damage."},
     "sweep_active": {"name": "Sweep", "cooldown": mark_cfg.SWEEP_COOLDOWN, "aim": False,
                      "color": (255, 214, 70), "icon": "sweep",
                      "desc": "Mark vanishes; a sweeper runs the path backwards, hitting every Didit."},
@@ -53,7 +55,15 @@ def use(game, tower, aid: str, pos=None) -> bool:
         return False
     cfg = ACTIVES[aid]
     fired = False
-    if aid == "sweep_active":
+    if aid == "fadhli_power_active":
+        tower.power_shots = fadhli_cfg.POWER_SHOTS
+        game.fx.vfx.comic(tower.pos + (0, -42), "THREE METEOR BOULES!", (255, 120, 45), 28, 1.0)
+        fired = True
+    elif aid == "fadhli_gyro_active":
+        fadhli.start_gyro(tower)
+        game.fx.vfx.comic(tower.pos + (0, -42), "GOLDEN RATIO!", (255, 220, 80), 30, 1.0)
+        fired = True
+    elif aid == "sweep_active":
         fired = mark.start_sweep(game, tower)
     elif aid == "loom_reset_active":
         fired = _loom(game, tower, cfg)
