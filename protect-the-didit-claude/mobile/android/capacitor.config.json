@@ -1,0 +1,7 @@
+{
+  "appId": "com.didit.protect",
+  "appName": "Protect The Didit",
+  "webDir": "www",
+  "backgroundColor": "#0c160e",
+  "android": { "allowMixedContent": false }
+}
