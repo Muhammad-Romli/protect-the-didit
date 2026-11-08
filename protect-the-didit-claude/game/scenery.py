@@ -192,6 +192,24 @@ def _stash(surface, pos) -> None:
             pygame.draw.line(c, (70, 170, 60), tip, (tip[0] + dx * S, tip[1] - 8 * S), 2 * S)
     img = gfx.downscale(c, S)
     surface.blit(img, img.get_rect(center=(x, y - 6)))
+    _original_didit(surface, x, y)
+
+
+ORIGINAL_DIDIT_COLOR = (246, 244, 240)   # the real, white Didit: the one the player protects
+
+
+def _original_didit(surface, x: int, y: int) -> None:
+    """The original white Didit sits at the side of the stash (the enemies are the dark clones)."""
+    from game import sprites_proc   # local import: sprites_proc needs a display-independent gfx only
+    r = 15
+    dx, dy = x - 58, y + 12
+    gfx.blit_shadow(surface, (dx + 6, dy + 16), 40, 14, 100)
+    img = sprites_proc._hamster_frame("normal", r, ORIGINAL_DIDIT_COLOR, 0)
+    surface.blit(img, img.get_rect(center=(dx, dy)))
+    for hx, hy, k in ((dx - 14, dy - 26, 1.0), (dx + 6, dy - 34, 0.7)):   # little hearts: it is loved
+        pygame.draw.circle(surface, (236, 62, 52), (hx - 2, hy), int(3 * k))
+        pygame.draw.circle(surface, (236, 62, 52), (hx + 2, hy), int(3 * k))
+        pygame.draw.polygon(surface, (236, 62, 52), [(hx - 5 * k, hy + 1), (hx + 5 * k, hy + 1), (hx, hy + 7 * k)])
 
 
 # ----------------------------------------------------------------- main bake

@@ -25,7 +25,8 @@ from data.touch import TOUCH_GEAR, TOUCH_SLOP
 from data.towers import DEFAULT_STATS, TOWER_ORDER, TOWERS
 from data.waves import SPECIAL_WAVES, WAVES
 from game import gfx, options as opts_mod, powers, shop_icons, sprites_proc
-from game.actives import ACTIVES, actives_of
+from data.settings import DIDITCODE_MAX_PER_PREP
+from game.actives import ACTIVES, actives_of, phase_ok as actives_phase_ok
 from game.bima_ui import GraphConsole
 from game.utils import draw_outlined, outlined_text, wrap_text
 
@@ -411,7 +412,7 @@ class UI:
         for i, (aid, rect) in enumerate(self.ability_rects):
             cfg = ACTIVES[aid]
             cd = t.active_cd.get(aid, 0.0)
-            live = game.phase.value == "battle" and cd <= 0
+            live = actives_phase_ok(game, aid) and cd <= 0 and not (aid == "diditcode" and game.code_uses >= DIDITCODE_MAX_PER_PREP)
             self._btn(surface, rect, cfg["color"], game, live, 10, pressed=game.aiming is not None and game.aiming[1] == aid)
             icon = cfg["icon"]
             if icon in ("cube", "pyramid", "sphere"):

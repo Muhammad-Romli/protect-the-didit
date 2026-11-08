@@ -1,4 +1,4 @@
-"""Headless: profile storage, shop purchases, permanent perks, Snack Coin rewards, in-game items, menu screens.
+"""Headless: profile storage, shop purchases, permanent perks, Didit Rupiah rewards, in-game items, menu screens.
 Run: python tests/test_menu_shop.py"""
 import os, sys, json
 os.environ["SDL_VIDEODRIVER"] = "dummy"; os.environ["SDL_AUDIODRIVER"] = "dummy"

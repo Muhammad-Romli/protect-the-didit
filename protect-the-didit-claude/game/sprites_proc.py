@@ -27,23 +27,34 @@ def _cut_below(img: pygame.Surface, y: int) -> pygame.Surface:
 
 
 # ------------------------------------------------------------------ hamster
+def is_dark(color) -> bool:
+    """Enemy Didits are black / dark purple; the original (white) Didit and wooden statues use the light look."""
+    return sum(color[:3]) < 330
+
+
 def _hamster_upper(kind: str, r: float, color, armored: int = 0, wood: bool = False) -> pygame.Surface:
     pad = int(r * 1.15)
     size = int(2 * r + 2 * pad)
     L = gfx.blank(size, size)
     c = size / 2
+    dark = is_dark(color) and not wood
+    ear_in = (150, 70, 170) if dark else (255, 168, 170)
+    belly = gfx.shade((70, 36, 96), 0.62) if dark else (250, 232, 200)
     for dx in (-0.52, 0.50):  # ears
         _put(L, gfx.sphere(0.38 * r, gfx.shade(color, 0.92)), c + dx * r, c - 0.80 * r)
-        _put(L, gfx.sphere(0.22 * r, gfx.shade(color, 0.62) if wood else (255, 168, 170), shine=0.2), c + dx * r + 0.03 * r, c - 0.78 * r)
+        _put(L, gfx.sphere(0.22 * r, gfx.shade(color, 0.62) if wood else ear_in, shine=0.2), c + dx * r + 0.03 * r, c - 0.78 * r)
     _put(L, gfx.sphere(r, color), c, c)
-    _put(L, gfx.ellipsoid(int(1.05 * r), int(0.9 * r), gfx.shade(color, 1.18) if wood else (250, 232, 200), shine=0.3), c + 0.18 * r, c + 0.30 * r)
-    if not wood:  # a carved statue has no blush
+    _put(L, gfx.ellipsoid(int(1.05 * r), int(0.9 * r), gfx.shade(color, 1.18) if wood else belly, shine=0.3), c + 0.18 * r, c + 0.30 * r)
+    if not wood and not dark:  # a carved statue has no blush
         cheek = gfx.blank(size, size)
         pygame.draw.circle(cheek, (255, 120, 130, 90), (c + 0.50 * r, c + 0.16 * r), max(2, 0.16 * r))
         L.blit(cheek, (0, 0))
-    for dx in (0.28, 0.68):  # eyes
-        _put(L, gfx.sphere(max(2.0, 0.17 * r), (24, 18, 26), shine=1.3), c + dx * r, c - 0.16 * r)
-    _put(L, gfx.sphere(max(1.6, 0.10 * r), (70, 42, 22) if wood else (255, 150, 160), shine=0.4), c + 0.94 * r, c + 0.06 * r)  # nose
+    for dx in (0.28, 0.68):  # eyes (glowing red on the dark Didits)
+        if dark:
+            _put(L, gfx.glow(max(3, int(0.42 * r)), (255, 60, 90), 160), c + dx * r, c - 0.16 * r)
+        _put(L, gfx.sphere(max(2.0, 0.17 * r), (255, 70, 100) if dark else (24, 18, 26), shine=1.3), c + dx * r, c - 0.16 * r)
+    nose = (200, 90, 220) if dark else ((70, 42, 22) if wood else (255, 150, 160))
+    _put(L, gfx.sphere(max(1.6, 0.10 * r), nose, shine=0.4), c + 0.94 * r, c + 0.06 * r)  # nose
     if kind == "fast":
         band = gfx.blank(size, size)
         pygame.draw.ellipse(band, (230, 50, 50), (c - 0.95 * r, c - 0.74 * r, 2.0 * r, 0.34 * r))
@@ -59,7 +70,7 @@ def _hamster_upper(kind: str, r: float, color, armored: int = 0, wood: bool = Fa
             pygame.draw.line(L, (90, 30, 40), (sx - 0.11 * r, sy - 0.03 * r), (sx + 0.11 * r, sy + 0.05 * r), max(1, int(0.04 * r)))
         pygame.draw.polygon(L, (0, 0, 0, 0), [(c + 0.38 * r, c - 1.14 * r), (c + 0.62 * r, c - 1.1 * r), (c + 0.5 * r, c - 0.92 * r)])  # torn ear notch
         for dx in (0.28, 0.68):  # angry brows
-            pygame.draw.line(L, (60, 50, 50), (c + (dx - 0.18) * r, c - 0.44 * r), (c + (dx + 0.16) * r, c - 0.30 * r), max(3, int(0.11 * r)))
+            pygame.draw.line(L, (190, 130, 235) if dark else (60, 50, 50), (c + (dx - 0.18) * r, c - 0.44 * r), (c + (dx + 0.16) * r, c - 0.30 * r), max(3, int(0.11 * r)))
     elif kind == "boss":
         crown = [(c - 0.62 * r, c - 0.78 * r), (c - 0.62 * r, c - 1.42 * r), (c - 0.30 * r, c - 1.08 * r),
                  (c, c - 1.55 * r), (c + 0.30 * r, c - 1.08 * r), (c + 0.62 * r, c - 1.42 * r), (c + 0.62 * r, c - 0.78 * r)]
@@ -68,7 +79,7 @@ def _hamster_upper(kind: str, r: float, color, armored: int = 0, wood: bool = Fa
         for dx, col in ((-0.3, (230, 50, 50)), (0.0, (60, 160, 255)), (0.3, (230, 50, 50))):
             pygame.draw.circle(L, col, (c + dx * r, c - 0.9 * r), max(2, 0.08 * r))
         for dx in (0.28, 0.68):
-            pygame.draw.line(L, (40, 0, 0), (c + (dx - 0.20) * r, c - 0.42 * r), (c + (dx + 0.16) * r, c - 0.30 * r), max(2, int(0.1 * r)))
+            pygame.draw.line(L, (210, 110, 255) if dark else (40, 0, 0), (c + (dx - 0.20) * r, c - 0.42 * r), (c + (dx + 0.16) * r, c - 0.30 * r), max(2, int(0.1 * r)))
     elif kind == "rich":
         _rich_extras(L, r, c)
     elif kind == "speedster":
@@ -176,7 +187,7 @@ def _hamster_frame(kind: str, r: float, color, frame: int, armored: int = 0) -> 
     c = canvas.get_width() / 2
     lift = max(0.0, math.sin(phi)), max(0.0, -math.sin(phi))
     for side, dx in enumerate((-0.42, 0.42)):  # tiny pink feet, alternating
-        pygame.draw.ellipse(canvas, (236, 150, 150), (c + dx * r - 0.22 * r, c + 0.78 * r - lift[side] * 0.22 * r, 0.46 * r, 0.30 * r))
+        pygame.draw.ellipse(canvas, (120, 60, 140) if is_dark(color) else (236, 150, 150), (c + dx * r - 0.22 * r, c + 0.78 * r - lift[side] * 0.22 * r, 0.46 * r, 0.30 * r))
     bob = abs(math.sin(phi)) * 0.10 * r
     _put(canvas, img, c, c - bob)
     if kind in ("fast", "speedster"):  # speed streaks behind (left)

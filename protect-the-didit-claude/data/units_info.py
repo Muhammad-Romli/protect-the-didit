@@ -8,7 +8,8 @@ UNITS_INFO = {
              "rule": "Each Jalu follows ONE path (no cross-pathing)."},
     "romli": {"role": "Economy + coder",
               "blurb": "Earns money every wave and fires weak \"bug\" shots. Go business for income, "
-                       "or programmer to turn attacks into money and random events.",
+                       "or programmer to turn attacks into money and random events. \
+Ability DiditCode (preparation): fix a code bug for money.",
               "rule": "Tier 4 on one path, tier 1 on the other."},
     "zizi": {"role": "Support / control",
              "blurb": "Splash damage with a mild slow. Recitation buffs nearby towers, "

@@ -130,7 +130,7 @@ def restore(game, data: dict) -> bool:
             built.append(t)
         game.reset()
         game.waves.number = wave
-        game.run_start_wave = wave   # only waves played from here on pay Snack Coins
+        game.run_start_wave = wave   # only waves played from here on pay Didit Rupiah
         game.money = float(data["money"])
         game.ball_knowledge = int(data.get("knowledge", 0))
         game.stash_hp = max(1, int(data["stash_hp"]))

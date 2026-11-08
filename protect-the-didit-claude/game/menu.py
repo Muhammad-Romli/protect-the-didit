@@ -3,7 +3,7 @@
 All screens share one tiny interface used by main.py:
     draw(screen, t, mouse)     draw one frame
     click(pos) -> str | None   a left click; returns a navigation word (see each class) or None
-Nothing here needs a running Game: the screens only read data/ and the Profile (Snack Coins, shop levels, stock),
+Nothing here needs a running Game: the screens only read data/ and the Profile (Didit Rupiah, shop levels, stock),
 so they work before the (slow) Game is built and again every time a run ends.
 Sounds: pass `audio` (game.fx.audio) once a Game exists; before that the menu is silent (browsers need a click first).
 """
@@ -11,19 +11,22 @@ from __future__ import annotations
 
 import math
 import random
+import zlib
 
 import pygame
 
 from data.settings import COLORS, SAVE_EVERY_WAVES, SCREEN_H, SCREEN_W
+from data import market as mcfg
 from data.shop import (ITEM_ORDER, ITEMS, LINES, MAX_STOCK, PERM_ORDER, PERMANENT, SHOPKEEPER)
 from data.towers import DEFAULT_STATS, TOWER_ORDER, TOWERS
 from data.units_info import UNITS_INFO
 from data.waves import WAVES
-from game import gfx, shop_icons, shopkeeper, sprites_proc, title, web
+from game import currency, gfx, shop_icons, shopkeeper, sprites_proc, title, web
 from game.profile import Profile
 from game.utils import draw_outlined, wrap_text
 
 GOLD = COLORS["gold"]
+DR_GREEN = currency.GREEN
 WHITE = (255, 255, 255)
 DIM = (205, 215, 235)
 NAVY = (28, 40, 84)
@@ -47,15 +50,33 @@ def button(surface, rect: pygame.Rect, base, label: str, mouse, size: int = 28, 
 
 
 def coin_pill(surface: pygame.Surface, coins: int, pulse: float = 0.0) -> None:
-    """Snack Coins total, top right (like the cash counter in the BTD6 menu)."""
-    r = pygame.Rect(0, 0, 250, 54)
+    """Didit Rupiah total, top right (like the cash counter in the BTD6 menu): green banknote + green amount."""
+    r = pygame.Rect(0, 0, 290, 54)
     r.topright = (SCREEN_W - 16, 14)
-    surface.blit(gfx.pill(r.w, r.h, (20, 14, 10), 200), r)
-    surface.blit(gfx.icon("coin", 46), (r.x + 4, r.y + 4))
+    surface.blit(gfx.pill(r.w, r.h, (14, 26, 16), 205), r)
+    n = currency.note(62)
+    surface.blit(n, n.get_rect(midleft=(r.x + 8, r.centery)))
     size = 34 + int(6 * pulse)
-    draw_outlined(surface, f"{coins}", (r.right - 16, r.centery - 2), size, GOLD if pulse < 0.05 else WHITE,
+    draw_outlined(surface, currency.fmt(coins), (r.right - 16, r.centery - 2), size, DR_GREEN if pulse < 0.05 else WHITE,
                   anchor="midright", width=3)
-    draw_outlined(surface, "SNACK COINS", (r.right - 8, r.bottom + 12), 14, DIM, anchor="midright", width=1)
+    draw_outlined(surface, "DIDIT RUPIAH (DR)", (r.right - 8, r.bottom + 12), 14, DR_GREEN, anchor="midright", width=1)
+
+
+def _chart_icon(size: int) -> pygame.Surface:
+    """Little stock chart (bars + rising arrow) for the WALLSTREET button."""
+    surf = gfx.blank(size, size)
+    ink = (38, 24, 18)
+    for i, h in enumerate((0.28, 0.45, 0.38, 0.62)):
+        x = size * (0.12 + i * 0.2)
+        r = pygame.Rect(int(x), int(size * (0.86 - h)), int(size * 0.14), int(size * h))
+        pygame.draw.rect(surf, ink, r.inflate(4, 4), border_radius=3)
+        pygame.draw.rect(surf, (255, 255, 255) if i % 2 else (150, 240, 150), r, border_radius=3)
+    pts = [(size * 0.10, size * 0.62), (size * 0.36, size * 0.42), (size * 0.54, size * 0.50), (size * 0.88, size * 0.16)]
+    pygame.draw.lines(surf, ink, False, pts, 9)
+    pygame.draw.lines(surf, (255, 214, 70), False, pts, 5)
+    pygame.draw.polygon(surf, ink, [(size * 0.97, size * 0.08), (size * 0.78, size * 0.12), (size * 0.92, size * 0.30)])
+    pygame.draw.polygon(surf, (255, 214, 70), [(size * 0.93, size * 0.12), (size * 0.82, size * 0.15), (size * 0.90, size * 0.26)])
+    return surf
 
 
 def title_text(surface: pygame.Surface, text: str, y: int = 54) -> None:
@@ -76,14 +97,14 @@ def _fullscreen_icon(surface: pygame.Surface, rect: pygame.Rect) -> None:
 
 # ======================================================================= main menu
 class MainMenu:
-    """Bottom row like BTD6: UNITS, SHOP, PLAY (big), DEVELOPERS, EXIT; Snack Coins top right.
-    click() returns: play | continue | units | shop | developers | exit | fullscreen | None."""
+    """Bottom row like BTD6: UNITS, SHOP, PLAY (big), DEVELOPERS, EXIT; Didit Rupiah top right.
+    click() returns: play | continue | units | shop | wallstreet | developers | exit | fullscreen | None."""
 
     def __init__(self, profile: Profile, save: dict | None) -> None:
         self.profile, self.save = profile, save
-        self.circles = [("units", "UNITS", 44, 340, 624), ("shop", "SHOP", 44, 490, 624),
-                        ("play", "PLAY", 62, 640, 614), ("developers", "DEVELOPERS", 44, 790, 624),
-                        ("exit", "EXIT", 44, 940, 624)]
+        self.circles = [("units", "UNITS", 44, 205, 624), ("shop", "SHOP", 44, 350, 624),
+                        ("wallstreet", "WALLSTREET", 44, 495, 624), ("play", "PLAY", 62, 640, 614),
+                        ("developers", "DEVELOPERS", 44, 785, 624), ("exit", "EXIT", 44, 930, 624)]
         self.continue_btn = pygame.Rect(0, 0, 420, 66)
         self.continue_btn.center = (SCREEN_W // 2, 358)
         self.fullscreen_btn = pygame.Rect(16, 14, 58, 58)
@@ -112,6 +133,8 @@ class MainMenu:
             img = pygame.transform.smoothscale(spr, (round(spr.get_width() * k), 84))
         elif key == "shop":
             img = shop_icons.icon("allowance", 64)
+        elif key == "wallstreet":
+            img = _chart_icon(70)
         else:
             img = None
         if img is not None:
@@ -128,7 +151,7 @@ class MainMenu:
     def draw(self, screen: pygame.Surface, t: float, mouse) -> None:
         title._scene(screen, t, None)
         hovered = self._circle_at(mouse)
-        colors = {"units": COLORS["btn_blue"], "shop": COLORS["btn_orange"], "play": COLORS["btn_green"],
+        colors = {"units": COLORS["btn_blue"], "shop": COLORS["btn_orange"], "play": COLORS["btn_green"], "wallstreet": (40, 150, 90),
                   "developers": (150, 90, 210), "exit": COLORS["btn_red"]}
         for key, label, r, x, y in self.circles:
             hov = hovered == key
@@ -141,7 +164,7 @@ class MainMenu:
             pygame.draw.circle(screen, gfx.tint(base, 0.18) if hov else base, (x, y - 2), rr - 8)
             pygame.draw.ellipse(screen, gfx.tint(base, 0.5), (x - rr * 0.6, y - rr * 0.82, rr * 1.2, rr * 0.7))
             self._icon(screen, key, x, y, r)
-            draw_outlined(screen, label, (x, y + rr + 20), 30 if key == "play" else 22, WHITE, center=True, width=3)
+            draw_outlined(screen, label, (x, y + rr + 20), 30 if key == "play" else 20 if key in ("wallstreet", "developers") else 22, WHITE, center=True, width=3)
         if self.save:
             nxt = min(self.save["wave"] + 1, len(WAVES))
             sub = f"Wave {nxt}   ${self.save['money']}   {self.save['towers']} towers"
@@ -291,6 +314,198 @@ class UnitsScreen:
         for line in wrap_text(up["description"], 15, rect.w - 26)[:3]:
             draw_outlined(screen, line, (rect.x + 14, y), 15, (222, 230, 250), width=1)
             y += 19
+
+
+
+# ================================================================== wallstreet
+HN_ORANGE = (255, 102, 0)
+HN_PAPER = (246, 246, 239)
+HN_USERS = ["didit_fan", "romli_dev", "kas_bendahara", "jalu_larp", "zizi_sloth", "hamster42", "ayun_shop", "bima_math"]
+
+
+def _fake_stats(text: str) -> tuple[int, int, int, str]:
+    """Stable fake points / comments / age / author for a headline (so the page does not flicker)."""
+    h = zlib.crc32(text.encode("utf-8"))
+    return 20 + h % 380, (h >> 8) % 120, 1 + (h >> 16) % 11, HN_USERS[(h >> 20) % len(HN_USERS)]
+
+
+class WallstreetScreen:
+    """DIDIT WALLSTREET (main-menu minigame). Left: a Hacker-News-style page that only shows the headlines for the
+    next market move. Right: IHSD, ROC and IUKXJ with price, chart, your shares and BUY / SELL buttons.
+    The market moves once per finished run (game/market.py). Trades go straight to the Profile (which saves itself).
+    click() returns 'back' or None."""
+
+    PANEL = pygame.Rect(30, 92, 560, 548)
+    CARD_X, CARD_W, CARD_H = 610, 640, 168
+
+    def __init__(self, profile: Profile, audio=None) -> None:
+        self.profile, self.audio = profile, audio
+        profile.refresh_kas()
+        self.back = pygame.Rect(30, 652, 190, 54)
+        self.msg, self.msg_left = "", 0.0
+        self.pulse = 0.0
+        self.btns: list[tuple[pygame.Rect, str, str, int]] = []   # rect, symbol, "buy" | "sell", qty (0 = all)
+        for i, sym in enumerate(mcfg.ORDER):
+            y = 128 + i * (self.CARD_H + 8)
+            for k, (act, qty, label) in enumerate((("buy", 1, "BUY 1"), ("buy", 10, "BUY 10"), ("sell", 1, "SELL 1"), ("sell", 0, "SELL ALL"))):
+                self.btns.append((pygame.Rect(self.CARD_X + 16 + k * 150, y + 126, 140, 32), sym, act, qty, label))
+
+    def _say(self, text: str) -> None:
+        self.msg, self.msg_left = text, 3.0
+
+    def click(self, pos) -> str | None:
+        if self.back.collidepoint(pos):
+            return "back"
+        for rect, sym, act, qty, _label in self.btns:
+            if rect.collidepoint(pos):
+                self._trade(sym, act, qty)
+                return None
+        return None
+
+    def _trade(self, sym: str, act: str, qty: int) -> None:
+        p, price = self.profile, self.profile.market.price(sym)
+        if act == "buy":
+            res = p.buy_stock(sym, qty)
+            if res == "ok":
+                _play(self.audio, "upgrade")
+                self.pulse = 1.0
+                self._say(f"Bought {qty} {sym} for {currency.fmt(price * qty)} DR")
+            else:
+                _play(self.audio, "error")
+                self._say({"poor": "Not enough Didit Rupiah", "cap": f"You can hold at most {mcfg.MAX_HOLD} shares"}.get(res, "Cannot buy"))
+        else:
+            n = p.shares(sym) if qty == 0 else min(qty, p.shares(sym))
+            got = p.sell_stock(sym, qty if qty else p.shares(sym))
+            if got:
+                _play(self.audio, "upgrade")
+                self.pulse = 1.0
+                self._say(f"Sold {n} {sym} for {currency.fmt(got)} DR (1% fee)")
+            else:
+                _play(self.audio, "error")
+                self._say(f"You own no {sym}")
+
+    # ------------------------------------------------------------------ draw
+    def draw(self, screen: pygame.Surface, t: float, mouse) -> None:
+        dt = 1 / 60
+        self.msg_left -= dt
+        self.pulse = max(0.0, self.pulse - dt * 3)
+        title.draw_backdrop(screen, t)
+        title_text(screen, "DIDIT WALLSTREET", 44)
+        self._draw_paper(screen)
+        m = self.profile.market
+        if self.msg_left > 0:
+            draw_outlined(screen, self.msg, (self.CARD_X, 108), 20, currency.GREEN, anchor="midleft", width=2)
+        else:
+            draw_outlined(screen, f"The market moves after every finished run (win or lose).   Moves so far: {m.tick}",
+                          (self.CARD_X, 108), 17, DIM, anchor="midleft", width=1)
+        for i, sym in enumerate(mcfg.ORDER):
+            self._draw_card(screen, sym, pygame.Rect(self.CARD_X, 128 + i * (self.CARD_H + 8), self.CARD_W, self.CARD_H), mouse)
+        coin_pill(screen, self.profile.coins, self.pulse)
+        button(screen, self.back, COLORS["btn_orange"], "BACK", mouse, 30)
+        draw_outlined(screen, f"Net worth: {currency.fmt(self.profile.net_worth())} DR", (240, 679), 24, currency.GREEN,
+                      anchor="midleft", width=3)
+
+    def _draw_paper(self, screen: pygame.Surface) -> None:
+        r = self.PANEL
+        pygame.draw.rect(screen, (20, 14, 10), r.move(0, 5), border_radius=10)
+        pygame.draw.rect(screen, HN_PAPER, r, border_radius=10)
+        bar = pygame.Rect(r.x, r.y, r.w, 36)
+        pygame.draw.rect(screen, HN_ORANGE, bar, border_top_left_radius=10, border_top_right_radius=10)
+        logo = pygame.Rect(r.x + 8, r.y + 6, 24, 24)
+        pygame.draw.rect(screen, WHITE, logo, 2)
+        draw_outlined(screen, "D", logo.center, 20, WHITE, center=True, width=0)
+        draw_outlined(screen, "Didit News", (r.x + 42, r.y + 18), 22, (20, 14, 10), anchor="midleft", width=0)
+        draw_outlined(screen, "new | past | comments | ask | show | jobs", (r.x + 176, r.y + 18), 15, (40, 24, 10),
+                      anchor="midleft", width=0)
+        heads = self.profile.market.headlines
+        y = r.y + 46
+        for n, h in enumerate(heads, 1):
+            pts, com, age, user = _fake_stats(h["text"])
+            draw_outlined(screen, f"{n}.", (r.x + 30, y + 10), 16, (130, 130, 130), anchor="midright", width=0)
+            pygame.draw.polygon(screen, (160, 160, 160), [(r.x + 38, y + 16), (r.x + 50, y + 16), (r.x + 44, y + 5)])
+            lines = wrap_text(h["text"], 16, r.w - 100)[:2]
+            for k, line in enumerate(lines):
+                draw_outlined(screen, line, (r.x + 58, y + 10 + k * 17), 16, (20, 20, 20), anchor="midleft", width=0)
+            tw = get_font_width(lines[0], 16)
+            inline = len(lines) == 1 and 58 + tw + 8 + get_font_width(f"({h['domain']})", 13) < r.w - 10
+            if inline:
+                draw_outlined(screen, f"({h['domain']})", (r.x + 58 + tw + 8, y + 10), 13, (130, 130, 130), anchor="midleft", width=0)
+            sub_y = y + 10 + len(lines) * 17 + 1
+            tail = "" if inline else f"({h['domain']})  "
+            draw_outlined(screen, f"{tail}{pts} points by {user} {age} hours ago | {com} comment{'' if com == 1 else 's'}", (r.x + 58, sub_y), 13,
+                          (130, 130, 130), anchor="midleft", width=0)
+            y += 56
+        m = self.profile.market
+        if m.tick:
+            parts = [f"{s} {m.change[s] * 100:+.1f}%" for s in mcfg.ORDER]
+            draw_outlined(screen, "Last move: " + "   ".join(parts), (r.centerx, r.bottom - 14), 15, (110, 110, 110), center=True, width=0)
+        else:
+            draw_outlined(screen, "Headlines for the next move. Reliable sources are right more often.", (r.centerx, r.bottom - 14), 15,
+                          (110, 110, 110), center=True, width=0)
+
+    def _draw_card(self, screen: pygame.Surface, sym: str, rect: pygame.Rect, mouse) -> None:
+        info, p, m = mcfg.STOCKS[sym], self.profile, self.profile.market
+        pygame.draw.rect(screen, (20, 14, 10), rect.move(0, 4), border_radius=14)
+        pygame.draw.rect(screen, NAVY, rect, border_radius=14)
+        pygame.draw.rect(screen, info["color"], rect, 3, border_radius=14)
+        draw_outlined(screen, sym, (rect.x + 18, rect.y + 24), 38, info["color"], anchor="midleft", width=3)
+        draw_outlined(screen, info["name"], (rect.x + 18, rect.y + 54), 16, DIM, anchor="midleft", width=1)
+        price = m.price(sym)
+        n = currency.note(46)
+        screen.blit(n, n.get_rect(midleft=(rect.x + 18, rect.y + 86)))
+        draw_outlined(screen, currency.fmt(price), (rect.x + 72, rect.y + 86), 34, currency.GREEN, anchor="midleft", width=3)
+        ch = m.change[sym]
+        col = currency.GREEN if ch > 0.0005 else (255, 110, 100) if ch < -0.0005 else DIM
+        arrow = "+" if ch > 0.0005 else "" 
+        draw_outlined(screen, f"{arrow}{ch * 100:.1f}%", (rect.x + 214, rect.y + 86), 22, col, anchor="midleft", width=2)
+        if sym == "IUKXJ":
+            draw_outlined(screen, f"kas.txt: Rp {currency.fmt(m.kas)}", (rect.x + 18, rect.y + 108), 15, (255, 224, 150), anchor="midleft", width=1)
+        else:
+            sub = f"Owned {p.shares(sym)}   Value {currency.fmt(p.stock_value(sym))} DR"
+            draw_outlined(screen, sub, (rect.x + 18, rect.y + 108), 15, WHITE, anchor="midleft", width=1)
+        if sym == "IUKXJ":
+            sub = f"Owned {p.shares(sym)}   Value {currency.fmt(p.stock_value(sym))} DR"
+            draw_outlined(screen, sub, (rect.x + 330, rect.y + 108), 15, WHITE, anchor="midleft", width=1)
+        pl = p.stock_value(sym) - p.basis.get(sym, 0) if p.shares(sym) else 0
+        if p.shares(sym):
+            draw_outlined(screen, f"P/L {pl:+,}".replace(",", "."), (rect.right - 16, rect.y + 108), 15,
+                          currency.GREEN if pl >= 0 else (255, 110, 100), anchor="midright", width=1)
+        self._sparkline(screen, pygame.Rect(rect.x + 330, rect.y + 14, 296, 82), m.history[sym], info["color"])
+        for brect, bsym, act, qty, label in self.btns:
+            if bsym != sym:
+                continue
+            if act == "buy":
+                ok = p.coins >= price * (qty or 1) and p.shares(sym) + (qty or 1) <= mcfg.MAX_HOLD
+                base = COLORS["btn_green"] if ok else (120, 90, 90)
+            else:
+                ok = p.shares(sym) > 0
+                base = COLORS["btn_red"] if ok else (100, 104, 120)
+            button(screen, brect, base, label, mouse, 20, enabled=True)
+
+    @staticmethod
+    def _sparkline(screen: pygame.Surface, box: pygame.Rect, data: list[float], color) -> None:
+        pygame.draw.rect(screen, (14, 22, 52), box, border_radius=8)
+        if len(data) < 2:
+            draw_outlined(screen, "no history yet", box.center, 15, DIM, center=True, width=1)
+            return
+        lo, hi = min(data), max(data)
+        span = max(hi - lo, hi * 0.05, 1e-6)
+        pts = [(box.x + 8 + i * (box.w - 16) / (len(data) - 1), box.bottom - 10 - (v - lo) / span * (box.h - 20))
+               for i, v in enumerate(data)]
+        fill = pygame.Surface(box.size, pygame.SRCALPHA)
+        poly = [(x - box.x, y - box.y) for x, y in pts] + [(box.w - 8, box.h - 4), (8, box.h - 4)]
+        pygame.draw.polygon(fill, (*color, 50), poly)
+        screen.blit(fill, box.topleft)
+        pygame.draw.lines(screen, (20, 14, 10), False, pts, 6)
+        pygame.draw.lines(screen, color, False, pts, 3)
+        pygame.draw.circle(screen, WHITE, (int(pts[-1][0]), int(pts[-1][1])), 5)
+        draw_outlined(screen, f"{hi:.0f}", (box.x + 8, box.y + 4), 12, DIM, anchor="topleft", width=0)
+        draw_outlined(screen, f"{lo:.0f}", (box.x + 8, box.bottom - 5), 12, DIM, anchor="bottomleft", width=0)
+
+
+def get_font_width(text: str, size: int) -> int:
+    from game.utils import get_font
+    return get_font(size).size(text)[0]
 
 
 # ========================================================================== shop
@@ -457,5 +672,6 @@ class ShopScreen:
             return
         ok = coins >= cost
         button(screen, btn, COLORS["btn_green"] if ok else (150, 70, 66), "", mouse, 20, enabled=True)
-        screen.blit(gfx.icon("coin", 24), (btn.centerx - 44, btn.centery - 12))
-        draw_outlined(screen, f"{cost}", (btn.centerx - 14, btn.centery), 22, WHITE if ok else (255, 200, 190), anchor="midleft", width=2)
+        n = currency.note(40)
+        screen.blit(n, n.get_rect(midleft=(btn.x + 10, btn.centery)))
+        draw_outlined(screen, currency.fmt(cost), (btn.right - 12, btn.centery), 22, WHITE if ok else (255, 200, 190), anchor="midright", width=2)

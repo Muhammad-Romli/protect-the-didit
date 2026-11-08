@@ -21,8 +21,8 @@ BUDGET = 0.012         # seconds of loading work per frame, so the loading scree
 
 
 async def _menu(screen: pygame.Surface, clock: pygame.time.Clock, profile: Profile, audio=None) -> str | None:
-    """Main menu + UNITS / SHOP / DEVELOPERS screens. Returns "new", "continue" or None (EXIT / window closed)."""
-    screens = {"main": menu.MainMenu(profile, savegame.summary()), "units": None, "shop": None, "developers": None}
+    """Main menu + UNITS / SHOP / WALLSTREET / DEVELOPERS screens. Returns "new", "continue" or None (EXIT / window closed)."""
+    screens = {"main": menu.MainMenu(profile, savegame.summary()), "units": None, "shop": None, "wallstreet": None, "developers": None}
     current, t = "main", 0.0
     while True:
         t += clock.tick(FPS) / 1000.0
@@ -44,9 +44,10 @@ async def _menu(screen: pygame.Surface, clock: pygame.time.Clock, profile: Profi
             title.toggle_fullscreen()
         elif action == "back":
             current, screens["main"] = "main", menu.MainMenu(profile, savegame.summary())
-        elif action in ("units", "shop", "developers"):
+        elif action in ("units", "shop", "wallstreet", "developers"):
             current = action
-            screens[action] = {"units": menu.UnitsScreen, "developers": menu.DevelopersScreen}.get(action, lambda: menu.ShopScreen(profile, audio))()
+            screens[action] = {"units": menu.UnitsScreen, "developers": menu.DevelopersScreen,
+                               "wallstreet": lambda: menu.WallstreetScreen(profile, audio)}.get(action, lambda: menu.ShopScreen(profile, audio))()
         elif action == "exit":
             return None
         elif action in ("play", "continue"):

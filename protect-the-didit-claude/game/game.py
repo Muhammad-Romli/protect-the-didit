@@ -21,7 +21,7 @@ from data.towers import TOWER_ORDER, TOWERS
 from data.waves import NEW_ENEMY_WAVES, SPECIAL_BONUS_MULT, SPECIAL_WAVES, WAVE_SCALING, WAVES
 from data.enemies import ENEMIES
 from data.effects import EFFECT_PARAMS
-from game import actives, bima, mark, options as opts_mod, powers, savegame, web
+from game import actives, bima, currency, diditcode, mark, options as opts_mod, powers, savegame, web
 from game.profile import Profile
 from game.effects import EFFECTS
 from game import gfx
@@ -94,8 +94,11 @@ class Game:
         self.powers_used: dict[str, int] = {}   # in-game shop items used this run (per-run limits)
         self.powers_open = False                # the POWERS list above the bottom bar
         self.insta: dict | None = None          # an Insta tower waiting to be placed (free, pre-upgraded)
+        self.code: diditcode.DiditCode | None = None   # Romli's DiditCode overlay (modal) while it is open
+        self.code_tower: Tower | None = None
+        self.code_uses = 0                      # DiditCode attempts used in this preparation phase
         self.run_start_wave = 0                 # waves already played when this run began (CONTINUE)
-        self.run_reward: dict | None = None     # Snack Coins earned when the run ended (end screen)
+        self.run_reward: dict | None = None     # Didit Rupiah earned when the run ended (end screen)
         self.exit_to_menu = False               # main.py leaves the game loop when this turns True
         self.towers: list[Tower] = []
         self.enemies: list[Enemy] = []
@@ -227,6 +230,9 @@ class Game:
 
     # ---------------------------------------------------------------- input
     def handle_event(self, event: pygame.event.Event) -> None:
+        if self.code is not None and self.state == State.PLAYING:   # DiditCode is modal: nothing else sees the input
+            self._code_event(event)
+            return
         if self.touch.handle_event(event):
             return
         if event.type == pygame.MOUSEMOTION:
@@ -254,6 +260,47 @@ class Game:
                 self.insta = None
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self.end_click(event.pos)
+
+    # ------------------------------------------------------------- DiditCode
+    def open_code(self, tower: Tower) -> None:
+        """Romli's DiditCode ability: open the puzzle overlay (cooldown + use are counted now, a free cancel refunds them)."""
+        self.code = diditcode.DiditCode(self.waves.number + 1)
+        self.code_tower = tower
+        self.code_uses += 1
+        tower.active_cd["diditcode"] = actives.ACTIVES["diditcode"]["cooldown"]
+        self.placing = self.aiming = self.insta = None
+        self.fx.click()
+
+    def _code_event(self, event: pygame.event.Event) -> None:
+        code = self.code
+        res = None
+        if event.type == pygame.MOUSEMOTION:
+            self.mouse_pos = event.pos
+            code.mouse = event.pos
+        elif event.type == pygame.KEYDOWN:
+            res = code.key(event.key)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.mouse_pos = event.pos
+            res = code.click(event.pos)
+        if res is None:
+            return
+        tower = self.code_tower
+        if res == "solved":
+            self.add_money(code.reward)
+            self.fx.income(tower, code.reward)
+        elif res == "failed":
+            self.fx.invalid()
+        elif res == "wrong":
+            self.fx.invalid()
+        elif res == "cancel":
+            if not code.touched and tower is not None:   # nothing was tried: no cost
+                tower.active_cd["diditcode"] = 0.0
+                self.code_uses = max(0, self.code_uses - 1)
+            self.code = self.code_tower = None
+        elif res == "close":
+            self.code = self.code_tower = None
+        if res in ("solved", "wrong"):
+            self.fx.click()
 
     def end_click(self, pos) -> None:
         """Win / lose screen buttons: PLAY AGAIN (new run) and MAIN MENU."""
@@ -616,7 +663,7 @@ class Game:
         self.sell_timer -= dt
         if self.message_timer <= 0:
             self.message = ""
-        if self.paused or self.options_open:
+        if self.paused or self.options_open or self.code is not None:
             return
         if self.state != State.PLAYING:
             self.fx.update(dt)
@@ -779,6 +826,7 @@ class Game:
 
     def _finish_wave(self) -> None:
         self.waves.finish()
+        self.code_uses = 0   # a new preparation phase: DiditCode attempts are back
         self.prep_time = 0.0
         self._last_prep_sec = 0
         self.battle_hp_mult = self.battle_speed_mult = 1.0
@@ -804,7 +852,7 @@ class Game:
                 self.flash(f"Game saved (wave {self.waves.number})", 3.5)
 
     def _end_run(self, won: bool) -> None:
-        """Pay Snack Coins for the waves cleared in THIS run (a CONTINUEd run only pays for the waves it played)."""
+        """Pay Didit Rupiah for the waves cleared in THIS run (a CONTINUEd run only pays for the waves it played)."""
         if self.run_reward is not None:
             return
         reached = self.waves.number if won else max(0, self.waves.number - 1)   # waves fully cleared in total
@@ -883,6 +931,8 @@ class Game:
         self.fx.vfx.draw_overlay(s, self.playfield)
         self._draw_vignette(s)
         self.ui.draw(s, self)
+        if self.code is not None:
+            self.code.draw(s, self.mouse_pos)
         if self.show_debug:
             self._draw_debug()
         elif self.options["fps"]:
@@ -970,11 +1020,12 @@ class Game:
         draw_outlined(self.screen, "The stash is safe." if won else "The stash is gone.", (640, 296), 28, (255, 255, 255), center=True)
         r = self.run_reward
         if r is not None:
-            self.screen.blit(gfx.icon("coin", 46), (470, 330))
-            draw_outlined(self.screen, f"+{r['coins']} Snack Coins", (526, 354), 38, COLORS["gold"], anchor="midleft", width=3)
+            note = currency.note(76)
+            self.screen.blit(note, note.get_rect(midleft=(420, 354)))
+            draw_outlined(self.screen, f"+{r['coins']} Didit Rupiah", (506, 354), 38, currency.GREEN, anchor="midleft", width=3)
             extra = f"{r['waves']} waves cleared" + (f"   (+{r['boost']}% Coin Booster)" if r["boost"] else "")
             draw_outlined(self.screen, extra, (640, 404), 22, (230, 236, 250), center=True, width=2)
-            draw_outlined(self.screen, f"Total: {self.profile.coins}   -   spend them in the SHOP", (640, 436), 20,
+            draw_outlined(self.screen, f"Total: {self.profile.coins}   -   spend them in the SHOP or trade them on Wallstreet", (640, 436), 20,
                           (200, 225, 255), center=True, width=1)
         for rect, label, base in ((END_AGAIN_RECT, "PLAY AGAIN", COLORS["btn_green"]), (END_MENU_RECT, "MAIN MENU", COLORS["btn_orange"])):
             rc = pygame.Rect(*rect)

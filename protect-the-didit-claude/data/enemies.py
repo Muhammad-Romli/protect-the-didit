@@ -1,4 +1,4 @@
-"""Enemy stats. Every Didit is a white hamster; kinds differ by size and accessories
+"""Enemy stats. Every enemy Didit is a black / dark purple hamster (the original white Didit sits next to the Snack Stash); kinds differ by size and accessories
 (game/sprites_proc.py). Base `money` is multiplied by BOUNTY_MULT and the wave growth in data/settings.py.
 
 Optional fields:
@@ -12,23 +12,23 @@ Optional fields:
 
 ENEMIES = {
     "normal": {"name": "Normal Didit", "hp": 10, "speed": 60, "stash_damage": 1,
-               "money": 5, "radius": 11, "color": (246, 244, 240), "is_boss": False},
+               "money": 5, "radius": 11, "color": (58, 30, 84), "is_boss": False},
     "fast": {"name": "Fast Didit", "hp": 6, "speed": 120, "stash_damage": 1,
-             "money": 6, "radius": 9, "color": (246, 244, 240), "is_boss": False, "fast": True},
+             "money": 6, "radius": 9, "color": (26, 20, 34), "is_boss": False, "fast": True},
     "tanky": {"name": "Tanky Didit", "hp": 60, "speed": 40, "stash_damage": 3,
-              "money": 15, "radius": 21, "color": (240, 236, 232), "is_boss": False},
+              "money": 15, "radius": 21, "color": (74, 40, 108), "is_boss": False},
     "boss": {"name": "Boss Didit", "hp": 700, "speed": 30, "stash_damage": 25,
-             "money": 150, "radius": 36, "color": (246, 244, 240), "is_boss": True},
+             "money": 150, "radius": 36, "color": (34, 18, 52), "is_boss": True},
     # Rich Didit: top hat, mustache, bag of money. Pays a lot when killed, steals money when it leaks.
     "rich": {"name": "Rich Didit", "hp": 90, "speed": 52, "stash_damage": 2,
-             "money": 45, "radius": 15, "color": (246, 244, 240), "is_boss": False, "steal": 40},
+             "money": 45, "radius": 15, "color": (50, 28, 74), "is_boss": False, "steal": 40},
     # Speedster Didit: very fast boss that slows down the longer it runs.
     "speedster": {"name": "Speedster Didit", "hp": 320, "speed": 60, "stash_damage": 20,
-                  "money": 120, "radius": 19, "color": (246, 244, 240), "is_boss": True,
+                  "money": 120, "radius": 19, "color": (30, 24, 60), "is_boss": True,
                   "fast": True, "decel": (3.2, 13.0)},
     # Reinforced Didit: 10 hits to break the armor, then it can be damaged.
     "reinforced": {"name": "Reinforced Didit", "hp": 40, "speed": 48, "stash_damage": 2,
-                   "money": 14, "radius": 14, "color": (246, 244, 240), "is_boss": False, "armor": 10},
+                   "money": 14, "radius": 14, "color": (44, 34, 64), "is_boss": False, "armor": 10},
     # Trojan Didit: a bare-wood Didit statue on wheels (not painted); a miniboss. 5 normal Didits climb out when it breaks.
     "trojan": {"name": "Trojan Didit", "hp": 150, "speed": 40, "stash_damage": 8,
                "money": 40, "radius": 30, "color": (184, 126, 66), "is_boss": False, "mini": True,

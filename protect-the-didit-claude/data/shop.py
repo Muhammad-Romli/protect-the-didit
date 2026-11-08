@@ -1,4 +1,4 @@
-"""Shop data (main menu). Shopkeeper: A'yun. Currency: Snack Coins (earned at the end of every run).
+"""Shop data (main menu). Shopkeeper: A'yun. Currency: Didit Rupiah (earned at the end of every run).
 
 PERMANENT items have levels: each level is bought once and the buff applies to EVERY later run.
   fields: name, desc, icon, per_level (value of one level), costs (price of level 1, 2, ...), unit (for the text)
@@ -27,7 +27,7 @@ PERMANENT = {
     "notes": {"name": "Study Notes", "icon": "notes", "per_level": 10, "unit": " KN",
               "desc": "Start with ball knowledge for Jalu's upgrades.", "costs": [80, 160, 260, 400, 600]},
     "booster": {"name": "Coin Booster", "icon": "booster", "per_level": 0.10, "unit": "%",
-                "desc": "Earn more Snack Coins at the end of a run.", "costs": [200, 450, 800]},
+                "desc": "Earn more Didit Rupiah at the end of a run.", "costs": [200, 450, 800]},
 }
 
 ITEM_ORDER = ["cash_drop", "stash_patch", "freeze_bomb", "espresso", "ball_scroll", "insta_jalu"]
@@ -48,9 +48,9 @@ ITEMS = {
 
 # Speech bubbles for A'yun (one is picked at random)
 LINES = {
-    "welcome": ["Welcome! Take a look around.", "Fresh stock today. Snack Coins only!", "Everything here helps the Stash."],
+    "welcome": ["Welcome! Take a look around.", "Fresh stock today. Didit Rupiah only!", "Everything here helps the Stash."],
     "bought": ["Pleasure doing business!", "Good pick. Use it well.", "Sold! Thank you."],
-    "poor": ["Not enough Snack Coins, sorry.", "Come back after another run!"],
+    "poor": ["Not enough Didit Rupiah, sorry.", "Come back after another run!"],
     "maxed": ["You already own the best one.", "That one is fully upgraded!"],
     "full": ["Your bag is full of those."],
 }

@@ -327,6 +327,15 @@ def icon(name: str, size: int) -> pygame.Surface:
         head = [(c + S * 0.16, c - S * 0.36), (c + S * 0.46, c), (c + S * 0.16, c + S * 0.36)]
         pygame.draw.polygon(surf, ink, [(c + (x - c) * 1.15 - S * 0.02, c + (y - c) * 1.15) for x, y in head])
         pygame.draw.polygon(surf, (255, 255, 255), head)
+    elif name == "code":  # DiditCode: </> in a terminal window
+        win = (S * 0.06, S * 0.14, S * 0.88, S * 0.72)
+        pygame.draw.rect(surf, ink, win, border_radius=int(S * 0.1))
+        pygame.draw.rect(surf, (24, 40, 36), (win[0] + S * 0.04, win[1] + S * 0.04, win[2] - S * 0.08, win[3] - S * 0.08), border_radius=int(S * 0.07))
+        g = (120, 255, 150)
+        w = max(2, int(S * 0.07))
+        pygame.draw.lines(surf, g, False, [(c - S * 0.12, c - S * 0.14), (c - S * 0.30, c), (c - S * 0.12, c + S * 0.14)], w)
+        pygame.draw.lines(surf, g, False, [(c + S * 0.12, c - S * 0.14), (c + S * 0.30, c), (c + S * 0.12, c + S * 0.14)], w)
+        pygame.draw.line(surf, g, (c + S * 0.05, c - S * 0.2), (c - S * 0.05, c + S * 0.2), w)
     out = downscale(surf)
     _CACHE[key] = out
     return out

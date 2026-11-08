@@ -81,6 +81,13 @@ COLORS = {
 # Autosave: a snapshot is stored (browser localStorage / savegame.json) after every Nth cleared wave
 SAVE_EVERY_WAVES = 3
 
-# Snack Coins: the meta currency earned when a run ends (win or lose) and spent in the main-menu shop (data/shop.py).
+# Didit Rupiah: the meta currency earned when a run ends (win or lose) and spent in the main-menu shop (data/shop.py).
 COINS_PER_WAVE = 15        # per wave cleared in THIS run (a continued run only pays for the waves played since the save)
 COINS_WIN_BONUS = 200      # extra for surviving the last wave
+
+# DiditCode (Romli's ability, preparation phase only): find the buggy line, then pick the fix.
+DIDITCODE_REWARD_BASE = 80         # $ for a solved snippet ...
+DIDITCODE_REWARD_PER_WAVE = 8      # ... plus this per wave number
+DIDITCODE_STRIKES = 2              # wrong picks allowed (a wrong line or a wrong fix is one strike)
+DIDITCODE_COOLDOWN = 40.0          # seconds (game time) before the same Romli can open it again
+DIDITCODE_MAX_PER_PREP = 2         # attempts per preparation phase, all Romlis together
