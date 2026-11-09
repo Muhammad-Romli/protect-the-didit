@@ -60,7 +60,6 @@ class Enemy:
         self.facing_left = False  # visual: sprites flip when walking left
         self.anim_offset = random.uniform(0, 8)
         self.reached_end = False
-        self.spinned_timer = 0.0
 
     @property
     def armor_stage(self) -> int:
@@ -183,18 +182,6 @@ class Enemy:
             img = sprites_proc.enemy_sprite(self.kind, r, self.color, frame, self.facing_left,
                                             self.hit_flash > 0 or self.armor_flash > 0, self.armor_stage)
         surface.blit(img, img.get_rect(center=(x, y)))
-        if self.spinned_timer > 0:
-            # Three offset, wobbling tornado ribbons; the original enemy and its health remain visible.
-            import math
-            phase = pygame.time.get_ticks() / 90
-            for i, col in enumerate(((90, 225, 245), (180, 250, 255), (55, 165, 205))):
-                pts = []
-                for j in range(5):
-                    yy = y + r - j * r * 0.48
-                    width = (j + 1) * r * 0.19
-                    pts.append((int(x + math.sin(phase + i * 2.1 + j * 0.8) * width), int(yy)))
-                pygame.draw.lines(surface, col, False, pts, max(2, r // 5))
-            pygame.draw.circle(surface, (245, 245, 255), (x, y - r), max(3, r // 5))
         if self.slow_timer > 0:
             ring = gfx.glow(int(r * 1.5), (120, 190, 255), 140)
             surface.blit(ring, ring.get_rect(center=(x, y)))

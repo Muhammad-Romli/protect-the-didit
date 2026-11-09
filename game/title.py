@@ -25,8 +25,9 @@ TIPS = [
 ]
 GOLD = (255, 214, 90)
 TRACK = pygame.Rect(0, 0, 860, 58)
-TRACK.center = (SCREEN_W // 2, 592)
+TRACK.center = (SCREEN_W // 2, 452)
 _STATIC: pygame.Surface | None = None
+_BACKDROP: pygame.Surface | None = None
 _MOTES = [(random.Random(i).random(), random.Random(i + 99).random(), 1 + (i % 3)) for i in range(18)]
 
 
@@ -55,11 +56,11 @@ def _crate(surf: pygame.Surface, center, s: int) -> None:
     pygame.draw.rect(surf, (214, 168, 104), (r.x + 3, r.y + 3, s - 6, 5), border_radius=3)
 
 
-def _static() -> pygame.Surface:
-    """Backdrop, title, path and crate: drawn once, blitted every frame."""
-    global _STATIC
-    if _STATIC is not None:
-        return _STATIC
+def _backdrop() -> pygame.Surface:
+    """Forest backdrop only (menus, shop, units): drawn once."""
+    global _BACKDROP
+    if _BACKDROP is not None:
+        return _BACKDROP
     surf = pygame.Surface((SCREEN_W, SCREEN_H))
     for y in range(SCREEN_H):  # deep forest green, lighter toward the middle
         d = abs(y / SCREEN_H - 0.45)
@@ -78,6 +79,22 @@ def _static() -> pygame.Surface:
         band.fill((0, 0, 0, a))
         surf.blit(band, (0, i))
         surf.blit(band, (0, SCREEN_H - 1 - i))
+    _BACKDROP = surf
+    return surf
+
+
+def draw_backdrop(screen: pygame.Surface, t: float) -> None:
+    """Backdrop + drifting fireflies, for the sub-screens of the main menu."""
+    screen.blit(_backdrop(), (0, 0))
+    _motes(screen, t)
+
+
+def _static() -> pygame.Surface:
+    """Backdrop, title, path and crate: drawn once, blitted every frame."""
+    global _STATIC
+    if _STATIC is not None:
+        return _STATIC
+    surf = _backdrop().copy()
     # cobblestone track (its middle groove is the progress bar)
     gfx.blit_shadow(surf, (TRACK.centerx, TRACK.bottom + 6), TRACK.w + 40, 34, 120)
     pygame.draw.rect(surf, (38, 24, 18), TRACK.inflate(10, 10), border_radius=30)
@@ -107,12 +124,16 @@ def _walker(surf: pygame.Surface, t: float, x: float) -> None:
     surf.blit(img, img.get_rect(center=(int(x), TRACK.centery - 16)))
 
 
-def _scene(screen: pygame.Surface, t: float, progress: float | None) -> None:
-    screen.blit(_static(), (0, 0))
+def _motes(screen: pygame.Surface, t: float) -> None:
     for fx, fy, size in _MOTES:  # fireflies drifting up
         x = (fx * SCREEN_W + math.sin(t * 0.8 + fy * 9) * 24) % SCREEN_W
         y = (fy * SCREEN_H - t * (10 + 6 * size)) % SCREEN_H
         pygame.draw.circle(screen, (222, 244, 170), (int(x), int(y)), size)
+
+
+def _scene(screen: pygame.Surface, t: float, progress: float | None) -> None:
+    screen.blit(_static(), (0, 0))
+    _motes(screen, t)
     x0, x1 = TRACK.x + 22, TRACK.right - 22
     if progress is None:  # menu: the Didit strolls back and forth, forever hopeful
         span = x1 - x0
@@ -134,51 +155,3 @@ def draw_loading(screen: pygame.Surface, t: float, progress: float, status: str)
     draw_outlined(screen, status, (SCREEN_W // 2, TRACK.bottom + 80), 22, (205, 225, 200), center=True)
     tip = TIPS[int(t / 3.5) % len(TIPS)]
     draw_outlined(screen, "TIP: " + tip, (SCREEN_W // 2, SCREEN_H - 34), 22, (255, 232, 170), center=True)
-
-
-# -------------------------------------------------------------------- menu
-class TitleMenu:
-    """CONTINUE (only with a save) / NEW GAME or PLAY / FULLSCREEN."""
-
-    def __init__(self, save: dict | None) -> None:
-        self.items: list[tuple[str, str, str, tuple, pygame.Rect]] = []
-        entries = []
-        if save:
-            nxt = min(save["wave"] + 1, len(WAVES))
-            entries.append(("continue", "CONTINUE", f"Wave {nxt}   ${save['money']}   {save['towers']} towers",
-                            COLORS["btn_green"], 78))
-        entries.append(("new", "NEW GAME" if save else "PLAY", "", COLORS["btn_orange"], 64))
-        entries.append(("fullscreen", "FULLSCREEN", "", COLORS["btn_blue"], 56))
-        y = 336
-        for key, label, sub, color, h in entries:
-            r = pygame.Rect(0, 0, 440, h)
-            r.midtop = (SCREEN_W // 2, y)
-            self.items.append((key, label, sub, color, r))
-            y += h + 16
-        self.primary = self.items[0][0]
-
-    def hit(self, pos) -> str | None:
-        for key, _l, _s, _c, rect in self.items:
-            if rect.collidepoint(pos):
-                return key
-        return None
-
-    def draw(self, screen: pygame.Surface, t: float, mouse) -> None:
-        _scene(screen, t, None)
-        for key, label, sub, color, rect in self.items:
-            hover = rect.collidepoint(mouse)
-            base = gfx.shade(color, 1.12) if hover else color
-            body = rect.move(0, -2 if hover else 0)
-            pygame.draw.rect(screen, COLORS["ink"], body.inflate(8, 8).move(0, 4), border_radius=18)
-            pygame.draw.rect(screen, gfx.shade(base, 0.74), body, border_radius=15)
-            top = body.copy()
-            top.h -= 8
-            pygame.draw.rect(screen, base, top, border_radius=15)
-            pygame.draw.rect(screen, gfx.tint(base, 0.35), (top.x + 10, top.y + 4, top.w - 20, 4), border_radius=2)
-            cy = body.centery - (4 if not sub else 12)
-            draw_outlined(screen, label, (body.centerx, cy), 34, (255, 255, 255), center=True, width=3)
-            if sub:
-                draw_outlined(screen, sub, (body.centerx, body.centery + 17), 20, (255, 255, 255), center=True)
-        draw_outlined(screen, f"Autosaves every {SAVE_EVERY_WAVES} rounds in this browser" if web.IS_WEB
-                      else f"Autosaves every {SAVE_EVERY_WAVES} rounds", (SCREEN_W // 2, SCREEN_H - 34), 20,
-                      (205, 225, 200), center=True)

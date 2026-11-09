@@ -62,6 +62,64 @@ def noise_burst(dur: float, vol: float = 0.4, decay: float = 2.5, smooth: float 
     return out
 
 
+def swell(f0: float, f1: float, dur: float, wave: str = "saw", vol: float = 0.4, power: float = 1.6,
+          tremolo: float = 0.0) -> Samples:
+    """A note that sweeps f0 -> f1 and gets LOUDER (charging up), then stops abruptly at its peak."""
+    n = int(SAMPLE_RATE * dur)
+    out: Samples = []
+    phase = 0.0
+    for i in range(n):
+        t = i / n
+        phase += 2 * math.pi * (f0 + (f1 - f0) * t ** 1.4) / SAMPLE_RATE
+        if wave == "sine":
+            sm = math.sin(phase)
+        elif wave == "square":
+            sm = 1.0 if math.sin(phase) >= 0 else -1.0
+        elif wave == "saw":
+            sm = (phase / math.pi) % 2 - 1
+        else:
+            sm = abs((phase / math.pi) % 2 - 1) * 2 - 1
+        env = t ** power * min(1.0, (n - i) / (SAMPLE_RATE * 0.01))
+        if tremolo:
+            env *= 0.65 + 0.35 * math.sin(2 * math.pi * tremolo * (1 + 2 * t) * i / SAMPLE_RATE)
+        out.append(sm * env * vol)
+    return out
+
+
+def swell_noise(dur: float, vol: float = 0.4, smooth: float = 0.9, power: float = 1.5) -> Samples:
+    """Noise that rises in volume (rumble / rushing air while charging)."""
+    n = int(SAMPLE_RATE * dur)
+    out: Samples = []
+    y = 0.0
+    for i in range(n):
+        y = y * smooth + random.uniform(-1, 1) * (1 - smooth)
+        out.append(y * vol * (i / n) ** power * min(1.0, (n - i) / (SAMPLE_RATE * 0.01)) * 3)
+    return out
+
+
+def wind(dur: float, vol: float = 0.5, smooth: float = 0.92, whirl: float = 9.0) -> Samples:
+    """Whirling wind: low-passed noise that swells in and out, with a slow 'rotating' wobble."""
+    n = int(SAMPLE_RATE * dur)
+    out: Samples = []
+    y = 0.0
+    for i in range(n):
+        t = i / n
+        y = y * smooth + random.uniform(-1, 1) * (1 - smooth)
+        env = math.sin(math.pi * t) ** 0.8
+        out.append(y * vol * 3 * env * (0.7 + 0.3 * math.sin(2 * math.pi * whirl * t * dur)))
+    return out
+
+
+def _barrage(vol: float = 0.5) -> Samples:
+    hits = [mix(noise_burst(0.03, vol, 2, 0.5), tone(190 + 25 * (k % 3), 100, 0.035, "sine", vol * 1.2, 3)) for k in range(7)]
+    return seq(*[seq(h, silence(0.022)) for h in hits])
+
+
+def soft(x: Samples, drive: float = 1.0) -> Samples:
+    """Soft clipper (tanh): loud layered sounds get a punchy, saturated peak instead of harsh digital clipping."""
+    return [math.tanh(v * drive) for v in x]
+
+
 def silence(dur: float) -> Samples:
     return [0.0] * int(SAMPLE_RATE * dur)
 
@@ -104,6 +162,22 @@ SOUNDS: dict[str, tuple[Callable[[float], Samples], int, float, float]] = {
     "mark_reappear": (lambda p: seq(tone(300, 900, 0.1, "sine", 0.4, 1.5), mix(tone(660, 660, 0.25, "triangle", 0.4, 2), noise_burst(0.1, 0.25, 2, 0.6))), 1, 0.1, 0.8),
     "loom": (lambda p: seq(tone(300, 900, 0.18, "sine", 0.4, 1.2), tone(900, 200, 0.3, "triangle", 0.4, 2, tremolo=14)), 1, 0.1, 0.8),
     "nap": (lambda p: mix(tone(330, 160, 0.6, "sine", 0.5, 1.2, tremolo=5), tone(165, 80, 0.6, "triangle", 0.4, 1.5)), 1, 0.1, 0.8),
+    # ---- Fadhli: Garp (power) - long charges, heavy throws, deep impacts
+    "garp_charge": (lambda p: mix(swell(55, 240, 0.7, "saw", 0.26, 1.7, tremolo=7), swell_noise(0.7, 0.30, 0.9, 1.4), swell(110, 480, 0.7, "triangle", 0.16, 2.0)), 1, 0.2, 0.8),
+    "garp_throw": (lambda p: soft(mix(noise_burst(0.34, 0.7, 1.2, 0.82), tone(150, 48, 0.26, "sine", 0.9, 2.2), tone(1100, 180, 0.18, "saw", 0.16, 3)), 1.0), 1, 0.1, 0.9),
+    "garp_impact": (lambda p: soft(mix(tone(105, 26, 0.6, "sine", 1.0, 1.9), noise_burst(0.5, 0.85, 1.5, 0.55), tone(62, 30, 0.6, "saw", 0.38, 2.0), tone(1600, 260, 0.07, "square", 0.3, 3), tone(70, 70, 0.4, "sine", 0.45, 2.5, tremolo=18)), 1.0), 2, 0.08, 1.0),
+    "galaxy_charge": (lambda p: mix(swell(40, 420, 1.35, "saw", 0.3, 1.8, tremolo=9), swell_noise(1.35, 0.38, 0.88, 1.3), swell(200, 1500, 1.35, "sine", 0.2, 2.2), swell(80, 840, 1.35, "triangle", 0.2, 2.0, tremolo=14)), 1, 0.5, 0.9),
+    "galaxy_impact": (lambda p: soft(mix(tone(95, 20, 1.0, "sine", 1.0, 1.5), noise_burst(0.9, 0.9, 1.1, 0.5), tone(50, 22, 1.0, "saw", 0.45, 1.6), tone(1800, 120, 0.16, "square", 0.35, 3), seq(silence(0.05), tone(520, 1040, 0.5, "sine", 0.22, 2.5, tremolo=10))), 1.0), 1, 0.2, 1.0),
+    "galaxy_on": (lambda p: seq(tone(200, 200, 0.07, "saw", 0.3, 1), tone(300, 300, 0.07, "saw", 0.3, 1), mix(tone(120, 60, 0.4, "sine", 0.7, 1.5), noise_burst(0.3, 0.4, 1.5, 0.8))), 1, 0.1, 0.9),
+    # ---- Fadhli: Johnny (spin) - quick metallic steel balls, wind, bounces, barrage, golden ratio
+    "steel_spin": (lambda p: swell(500 * p, 1900 * p, 0.12, "triangle", 0.4, 1.0, tremolo=30), 2, 0.06, 0.55),
+    "steel_throw": (lambda p: mix(tone(2200 * p, 1000 * p, 0.11, "saw", 0.13, 2.5), noise_burst(0.09, 0.22, 2, 0.5), tone(3100 * p, 2300 * p, 0.07, "sine", 0.1, 3)), 3, 0.05, 0.6),
+    "steel_hit": (lambda p: soft(mix(tone(1450 * p, 1400 * p, 0.2, "sine", 0.34, 3), tone(2150 * p, 2100 * p, 0.16, "sine", 0.2, 3), tone(3300 * p, 3250 * p, 0.1, "sine", 0.12, 3), noise_burst(0.03, 0.45, 3, 0.2), tone(200 * p, 90, 0.07, "sine", 0.55, 3)), 1.0), 3, 0.04, 0.7),
+    "tornado": (lambda p: mix(wind(0.7, 0.55, 0.93, 8.0), tone(280 * p, 760 * p, 0.7, "sine", 0.1, 0.9, tremolo=15), tone(150 * p, 440 * p, 0.7, "triangle", 0.09, 1.1, tremolo=9)), 2, 0.07, 0.75),
+    "bounce": (lambda p: seq(tone(1300 * p, 2100 * p, 0.05, "sine", 0.34, 1.5), tone(1900 * p, 2700 * p, 0.07, "sine", 0.26, 2.5)), 3, 0.04, 0.55),
+    "stun_ding": (lambda p: mix(tone(1900, 1850, 0.22, "sine", 0.3, 2.5), tone(2850, 2800, 0.18, "sine", 0.16, 3)), 1, 0.08, 0.5),
+    "barrage": (lambda p: _barrage(0.5), 2, 0.12, 0.7),
+    "golden": (lambda p: seq(*[tone(f, f, 0.08, "sine", 0.34, 1.3) for f in (440, 712, 1152)], mix(tone(1864, 1864, 0.5, "sine", 0.34, 2.0, tremolo=9), tone(932, 932, 0.5, "triangle", 0.2, 2.0), tone(2250, 2250, 0.45, "sine", 0.12, 2.5))), 1, 0.2, 0.8),
     "graph_fire": (lambda p: mix(tone(300, 1400, 0.22, "saw", 0.3, 1.8), tone(600, 1800, 0.2, "sine", 0.3, 1.5)), 1, 0.05, 0.8),
     "shape_sq": (lambda p: tone(210 * p, 150 * p, 0.09, "square", 0.4, 3), 3, 0.05, 0.7),
     "shape_tri": (lambda p: tone(700 * p, 1100 * p, 0.08, "saw", 0.3, 3), 3, 0.05, 0.7),

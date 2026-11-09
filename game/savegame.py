@@ -105,7 +105,7 @@ def restore(game, data: dict) -> bool:
             kind = d["kind"]
             if kind not in TOWERS:
                 return False
-            t = Tower(kind, Vec(float(d["x"]), float(d["y"])))
+            t = Tower(kind, Vec(float(d["x"]), float(d["y"])), game.sell_refund())
             t.tiers = [max(0, min(MAX_TIER, int(v))) for v in d["tiers"]][:2]
             if len(t.tiers) != 2:
                 return False
@@ -130,9 +130,11 @@ def restore(game, data: dict) -> bool:
             built.append(t)
         game.reset()
         game.waves.number = wave
+        game.run_start_wave = wave   # only waves played from here on pay Didit Rupiah
         game.money = float(data["money"])
         game.ball_knowledge = int(data.get("knowledge", 0))
         game.stash_hp = max(1, int(data["stash_hp"]))
+        game.stash_max = max(game.stash_max, game.stash_hp)
         game.larp_tip_shown = bool(data.get("larp_tip_shown", False))
         game.towers = built
         game.ui.shown_money = game.money  # HUD starts at the real value (no count-up animation)

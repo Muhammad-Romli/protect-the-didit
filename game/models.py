@@ -10,6 +10,8 @@ A tower's `look` is None (base) or (path, tier) from `look_of(kind, tiers)`: pat
   romli  A = Business (shirt+tie -> suit -> gold -> crown)       B = Programmer (hoodie, headphones, code screens)
   zizi   A = Recitation (shawl, halo)                            B = Sloth (pajamas, sleepy eyes, pillow)
   bima   A = Graph (pencil, lab coat, hologram wave)             B = Geometry (orbiting shapes, laurel)
+  fadhli A = Garp (white marine coat draped over the shoulders, iron gloves, gold trim)
+         B = Johnny Joestar (feathered hat, wide-collar jacket, spiral belt) + the Tusk stand (Act 1 / 3 / 4)
   fused_jalu_romli  (fusion tower, not in the game yet): vest + headset.
 
 Public API: look_of, costume, draw_hair, weapon_image, projectile, prop, draw_companion, mark_runner.
@@ -98,7 +100,7 @@ def costume(kind: str, look) -> dict:
         return {}
     path, tier = look
     table = {("jalu", 0): _mark, ("jalu", 1): _loki, ("romli", 0): _business, ("romli", 1): _coder,
-             ("zizi", 0): _recitation, ("zizi", 1): _sloth, ("bima", 0): _graph, ("bima", 1): _geometry}
+             ("zizi", 0): _recitation, ("zizi", 1): _sloth, ("bima", 0): _graph, ("bima", 1): _geometry, ("fadhli", 0): _garp, ("fadhli", 1): _johnny}
     fn = table.get((kind, path))
     return fn(tier) if fn else {}
 
@@ -308,6 +310,73 @@ def _geometry(tier: int) -> dict:
     return {"style": {}, "body": body, "front": front}
 
 
+# ---- Fadhli path A: Garp (clothes only: the marine coat worn draped over the shoulders)
+def _garp(tier: int) -> dict:
+    coat, coat_s, edge = (247, 248, 252), (190, 196, 212), (128, 136, 158)
+    navy = (28, 40, 92)
+    gold = (236, 190, 60)
+
+    def back(c: Ctx) -> None:           # the long coat hanging down his back
+        c.poly(coat_s, [(-0.56, -1.12), (0.56, -1.12), (1.04, 0.24), (0.4, 0.38), (-0.4, 0.38), (-1.04, 0.24)], edge, 0.03)
+        c.poly(coat, [(-0.44, -1.08), (0.44, -1.08), (0.86, 0.14), (0, 0.28), (-0.86, 0.14)])
+        if tier >= 3:
+            c.lines(gold, [(-1.04, 0.24), (-0.4, 0.38), (0.4, 0.38), (1.04, 0.24)], 0.045)
+
+    def body(c: Ctx) -> None:
+        for sx in (-1, 1):              # open coat flaps with lapels, the navy shirt shows in the middle
+            c.poly(coat, [(sx * 0.72, -1.14), (sx * 0.30, -1.12), (sx * 0.26, 0.12), (sx * 0.8, 0.14)], edge, 0.025)
+            c.poly(coat_s, [(sx * 0.30, -1.12), (sx * 0.58, -1.0), (sx * 0.2, -0.66)], edge, 0.02)
+            c.sph(0.3, coat, sx * 0.64, -1.0, 0.7)                                        # coat bulging over the shoulder
+            if tier >= 3:
+                c.line(gold, (sx * 0.27, -1.1), (sx * 0.24, 0.1), 0.04)                   # gold trim on the edges
+        c.circle(navy, 0, -0.74, 0.17)                                                    # marine badge on the shirt
+        c.circle((250, 250, 255), 0, -0.74, 0.1)
+        c.line((190, 40, 50), (-0.07, -0.74), (0.07, -0.74), 0.05)
+        c.line((30, 30, 40), (-0.2, -0.04), (0.2, -0.04), 0.09)                           # belt peeking out
+        if tier >= 4:
+            for sx in (-1, 1):
+                c.sph(0.2, gold, sx * 0.7, -1.16, 0.8)                                   # gold epaulettes
+
+    iron = (126, 134, 154)
+    style = {"shirt": navy, "shoes": (36, 36, 44)}
+    if tier >= 2:
+        style["glove"] = iron                                                             # "Iron Fist" gauntlets
+    return {"style": style, "back": back, "body": body}
+
+
+# ---- Fadhli path B: Johnny Joestar (approximate: feathered hat, wide pointed collar, spiral belt buckle)
+def _johnny(tier: int) -> dict:
+    jacket, collar, edge = (34, 112, 108), (22, 78, 76), (10, 44, 42)
+    hat, hat_d, gold = (36, 44, 76), (22, 26, 48), (240, 196, 70)
+
+    def body(c: Ctx) -> None:
+        for sx in (-1, 1):
+            c.poly(jacket, [(sx * 0.66, -1.12), (sx * 0.26, -1.12), (sx * 0.24, 0.12), (sx * 0.7, 0.12)], edge, 0.025)
+            c.poly(collar, [(sx * 0.28, -1.16), (sx * 0.86, -1.24), (sx * 0.54, -0.74)], edge, 0.02)   # big pointed collar
+        c.line((22, 22, 30), (-0.66, -0.06), (0.66, -0.06), 0.13)                                      # belt
+        c.circle(gold, 0, -0.06, 0.13)
+        pts = [(0.0 + 0.012 * 1.618 ** (a / 1.2) * math.cos(a * 2.0), -0.06 + 0.012 * 1.618 ** (a / 1.2) * math.sin(a * 2.0)) for a in [i * 0.4 for i in range(9)]]
+        c.lines((120, 80, 14), pts, 0.02)                                                              # spiral on the buckle
+        if tier >= 3:
+            for sx in (-1, 1):
+                for k in range(3):
+                    c.circle(gold, sx * (0.56 + 0.04 * k), -1.0 + 0.1 * k, 0.04)                       # studs on the collar
+        if tier >= 4:                                                                                  # golden spiral glow on the chest
+            sp = [(0.35 * 0.1 * 1.618 ** (a / 1.1) * math.cos(a * 2.0 + 1.0) - 0.0, -0.58 + 0.1 * 1.618 ** (a / 1.1) * math.sin(a * 2.0 + 1.0) * 0.9)
+                  for a in [i * 0.3 for i in range(14)]]
+            c.glow(0.5, (255, 214, 70), 90, 0, -0.58)
+            c.lines((255, 226, 110), sp, 0.03)
+
+    def front(c: Ctx) -> None:            # flat cap with a gold band and a feather
+        c.ellipse(hat_d, 0, -1.84, 1.46, 0.34)                                                         # brim
+        c.ell(1.12, 0.78, hat, 0, -2.0, shine=0.7)                                                     # crown
+        c.line(gold, (-0.52, -1.9), (0.52, -1.9), 0.07)
+        c.poly((255, 150, 176), [(0.38, -1.98), (0.62, -2.34), (0.82, -2.7), (0.68, -2.3), (0.52, -1.96)], (170, 70, 96), 0.02)
+        c.line((255, 210, 220), (0.42, -2.0), (0.8, -2.66), 0.025)
+
+    return {"style": {"shirt": (236, 236, 226), "shoes": (60, 44, 34), "glove": (60, 44, 34)}, "body": body, "front": front}
+
+
 # ---- Fusion
 def _fused_vest(c: Ctx) -> None:
     grey = (96, 104, 120)
@@ -355,6 +424,13 @@ def draw_hair(c: Ctx, kind: str, cos: dict) -> None:
             c.sph(0.15, hair, x, y, 0.8)
         c.poly(hair, [(-0.52, -1.66), (0.34, -1.54), (0.5, -1.66), (0.1, -1.78)])     # short side-swept fringe
         for sx in (-1, 1):                                                    # sideburns, above the ears
+            c.ell(0.1, 0.2, hair, sx * 0.62, -1.36, shine=0.5)
+        return
+    if kind == "fadhli":                                                      # short dark hair with a side fringe
+        cap = gfx.sphere(0.69 * r, hair, shine=0.7)
+        c.put(_cut_below(cap, int(cap.get_height() * 0.46)), 0, -1.46)
+        c.poly(hair, [(-0.54, -1.62), (0.4, -1.52), (0.52, -1.66), (0.12, -1.8), (-0.3, -1.78)])
+        for sx in (-1, 1):
             c.ell(0.1, 0.2, hair, sx * 0.62, -1.36, shine=0.5)
         return
     hair_img = gfx.sphere(0.70 * r, hair, shine=0.9)
@@ -444,6 +520,18 @@ def _weapon_surface(kind: str, look) -> pygame.Surface | None:
         poly((236, 190, 70), [(29, 0), (34, -2.5), (38, 0), (34, 2.5)], GOLD_D, 0.7)
         for k in (-2, 0, 2):
             pygame.draw.line(cv, (236, 190, 70), X(36, 0), X(41, k * 1.4), int(1.2 * S))
+    elif kind == "fadhli" and path == 0:   # Garp: a big iron cannonball
+        ball(9.5, (74, 80, 98), 15, 0, 0.9)
+        pygame.draw.line(cv, (200, 60, 60), X(15, -8.4), X(15, 8.4), int(1.6 * S))               # red band
+        ball(2.0, (210, 216, 232), 11, -4, 0.4)
+    elif kind == "fadhli" and path == 1:   # Johnny: a steel ball with a golden spiral
+        ball(6.6, (206, 214, 228), 13, 0, 1.2)
+        pts = [(13 + 0.7 * 1.618 ** (a / 1.1) * math.cos(a * 2.0), 0.7 * 1.618 ** (a / 1.1) * math.sin(a * 2.0)) for a in [i * 0.45 for i in range(12)]]
+        pygame.draw.lines(cv, (240, 190, 50), False, [X(*q) for q in pts], max(1, int(1.1 * S)))
+    elif kind == "fadhli":               # base Fadhli: a rock
+        ball(6.0, (150, 140, 128), 12, 0, 0.7)
+        ball(2.0, (180, 170, 156), 10, -2.4, 0.4)
+        pygame.draw.line(cv, (98, 90, 80), X(10, 1.5), X(15, 3.5), int(1.0 * S))
     elif kind == "bima":                 # drawing compass
         pygame.draw.line(cv, (150, 156, 172), X(4, 0), X(30, -4.5), int(2.4 * S))
         pygame.draw.line(cv, (150, 156, 172), X(4, 0), X(27, 6), int(2.4 * S))
@@ -531,25 +619,110 @@ def projectile(kind: str, look) -> tuple[pygame.Surface, float] | None:
             ball(2.2, (244, 220, 255) if i % 2 else (200, 120, 232), 7 * math.cos(a), 7 * math.sin(a), 0.9)
         pygame.draw.circle(cv, (236, 190, 70), X(0, 0), int(1.6 * S))
         out = (gfx.downscale(cv, S), 200.0)
+    elif kind == "fadhli" and path == 0:   # Garp: iron cannonball with a hot glow
+        cv.blit(gfx.glow(12 * S, (255, 140, 60), 120), gfx.glow(12 * S, (255, 140, 60), 120).get_rect(center=X(0)))
+        ball(9.5, (74, 80, 98), 0, 0, 0.9)
+        pygame.draw.line(cv, (200, 60, 60), X(0, -8.4), X(0, 8.4), int(1.6 * S))
+        ball(2.0, (210, 216, 232), -3.5, -3.5, 0.4)
+        out = (gfx.downscale(cv, S), 160.0)
+    elif kind == "fadhli" and path == 1:   # Johnny: steel ball, golden spiral, cold shine
+        cv.blit(gfx.glow(10 * S, (190, 230, 255), 150), gfx.glow(10 * S, (190, 230, 255), 150).get_rect(center=X(0)))
+        ball(6.6, (206, 214, 228), 0, 0, 1.3)
+        pts = [(0.7 * 1.618 ** (a / 1.1) * math.cos(a * 2.0), 0.7 * 1.618 ** (a / 1.1) * math.sin(a * 2.0)) for a in [i * 0.45 for i in range(12)]]
+        pygame.draw.lines(cv, (240, 190, 50), False, [X(*q) for q in pts], max(1, int(1.1 * S)))
+        out = (gfx.downscale(cv, S), 900.0)
+    elif kind == "fadhli":                # base Fadhli: a rock
+        ball(6.4, (150, 140, 128), 0, 0, 0.7)
+        ball(2.2, (184, 174, 160), -2, -2.4, 0.4)
+        out = (gfx.downscale(cv, S), 220.0)
     elif kind == "bima":                  # equation spark: orange orb with a sine wave
         cv.blit(gfx.glow(11 * S, (255, 170, 80), 190), gfx.glow(11 * S, (255, 170, 80), 190).get_rect(center=X(0)))
         ball(7, (255, 160, 70), 0, 0)
         pygame.draw.lines(cv, (255, 255, 255), False, [X(-5 + i, 2.6 * math.sin(i * 0.9)) for i in range(11)], int(1.2 * S))
         out = (gfx.downscale(cv, S), 0.0)
-    elif kind == "fadhli":               # petanque boule; polished steel on Accuracy tier 3+
-        steel = bool(look and look[0] == 1 and look[1] >= 3)
-        col = (185, 205, 220) if steel else (205, 180, 125)
-        cv.blit(gfx.glow(12 * S, (120, 210, 255) if steel else (255, 200, 110), 150),
-                gfx.glow(12 * S, (120, 210, 255) if steel else (255, 200, 110), 150).get_rect(center=X(0)))
-        ball(8, col, 0, 0, 1.4)
-        pygame.draw.arc(cv, (255, 255, 245), pygame.Rect(*X(-5, -5), 10 * S, 10 * S), 0.4, 2.6, max(1, S))
-        if steel:
-            pygame.draw.line(cv, (100, 180, 220), X(-6, 5), X(6, -5), max(1, S))
-        out = (gfx.downscale(cv, S), 420.0 if steel else 180.0)
     else:
         out = None
     _CACHE[key] = out
     return out
+
+
+# ================================================================== Tusk (Johnny's stand)
+def tusk(act: int, size: int) -> pygame.Surface:
+    """Stylised Tusk, facing RIGHT. act 1: small critter with a pointed finger. act 3: crouching, tall horns + spiral tail.
+    act 4: big muscular humanoid with golden spiral lines and a rotating halo. Cached, `size` = canvas px."""
+    key = ("tusk", act, size)
+    if key in _CACHE:
+        return _CACHE[key]
+    n = 48
+    cv = gfx.blank(n * S, n * S)
+    h = n * S / 2
+    cream, cream_d, ink, gold, blue = (236, 232, 210), (190, 184, 160), (46, 50, 82), (255, 206, 60), (96, 176, 255)
+
+    def X(x, y=0.0):
+        return (h + x * S, h + y * S)
+
+    def ball(rad, col, x, y, shine=0.9):
+        big = pygame.transform.smoothscale(gfx.sphere(rad, col, shine=shine), (int((2 * rad + 2) * S), int((2 * rad + 2) * S)))
+        cv.blit(big, big.get_rect(center=X(x, y)))
+
+    def glow(rad, col, a, x=0.0, y=0.0):
+        g = gfx.glow(int(rad * S), col, a)
+        cv.blit(g, g.get_rect(center=X(x, y)))
+
+    def spiral(cx, cy, scale, col, w, turns=11):
+        pts = [(cx + scale * 1.618 ** (a / 1.1) * math.cos(a * 2.0), cy + scale * 1.618 ** (a / 1.1) * math.sin(a * 2.0)) for a in [i * 0.4 for i in range(turns)]]
+        pygame.draw.lines(cv, col, False, [X(*q) for q in pts], max(1, int(w * S)))
+
+    if act == 1:
+        glow(18, blue, 70)
+        ball(7.5, cream, -2, 9, 0.9)                                           # body
+        ball(8.0, cream, -1, -5, 1.0)                                          # head
+        for sx in (-1, 1):                                                     # small horns / ears
+            gfx.poly(cv, ink, [X(-1 + sx * 5, -11), X(-1 + sx * 9.5, -19), X(-1 + sx * 8.5, -10)])
+        ball(1.5, ink, 2, -6, 1.3); ball(1.5, ink, -5, -6, 1.3)                # eyes
+        pygame.draw.line(cv, ink, X(-3, -1.5), X(1, -1.5), int(0.9 * S))      # mouth
+        pygame.draw.line(cv, cream_d, X(3, 6), X(13, 3), int(3.2 * S))         # arm
+        ball(3.2, cream, 14, 2.5, 0.9)                                         # hand
+        gfx.poly(cv, gold, [X(16, 1), X(23, 2.2), X(16, 4.4)], (150, 100, 20), max(1, int(0.6 * S)))   # the nail
+        glow(7, gold, 200, 22, 2.2)
+        spiral(-2, 10, 0.5, ink, 0.8)
+    elif act == 3:
+        glow(22, blue, 80)
+        for k in range(14):                                                    # spiral tail
+            a = k * 0.5
+            ball(2.4 - 0.12 * k, cream_d, -10 - 1.0 * k, 12 - 2.2 * math.sin(a), 0.7)
+        spiral(-18, 10, 1.4, gold, 1.0, 9)
+        ball(9, cream, -1, 6, 0.9)                                             # crouched body
+        ball(8.4, cream, 1, -8, 1.0)                                           # head
+        for sx in (-1, 1):                                                     # tall horns
+            gfx.poly(cv, ink, [X(1 + sx * 4, -13), X(1 + sx * 8, -26), X(1 + sx * 10, -12)])
+        for sx in (-1, 1):                                                     # shoulder spikes
+            gfx.poly(cv, cream_d, [X(-1 + sx * 7, -1), X(-1 + sx * 13, -5), X(-1 + sx * 10, 3)], ink, max(1, int(0.5 * S)))
+        ball(1.7, ink, 4, -9, 1.3); ball(1.7, ink, -3, -9, 1.3)
+        pygame.draw.line(cv, cream_d, X(5, 4), X(16, 1), int(4 * S))
+        ball(3.8, cream, 17, 0.5, 0.9)
+        gfx.poly(cv, gold, [X(19, -1.8), X(28, 0.5), X(19, 2.8)], (150, 100, 20), max(1, int(0.6 * S)))
+        glow(8, gold, 210, 27, 0.5)
+        spiral(-1, 7, 0.6, ink, 0.9)
+    else:  # act 4
+        glow(23, gold, 90)
+        pygame.draw.circle(cv, (*gold, 255), X(-2, -2), int(21 * S), max(1, int(1.2 * S)))        # the rotating halo (drawn static; Tower rotates the sprite)
+        spiral(-2, -2, 1.2, gold, 1.1, 12)
+        ball(11, cream, -2, 6, 0.9)                                            # broad torso
+        ball(7.6, cream, -2, -10, 1.0)                                         # head
+        for sx in (-1, 1):                                                     # horn crest
+            gfx.poly(cv, ink, [X(-2 + sx * 3, -15), X(-2 + sx * 7, -28), X(-2 + sx * 9, -13)])
+        gfx.poly(cv, gold, [X(-2 - 2, -17), X(-2, -31), X(-2 + 2, -17)])
+        ball(1.7, gold, 1, -11, 1.3); ball(1.7, gold, -5, -11, 1.3)
+        for sx in (-1, 1):
+            pygame.draw.line(cv, cream_d, X(-2 + sx * 9, 0), X(-2 + sx * 17, 6), int(5 * S))      # big arms
+            ball(4.6, cream, -2 + sx * 18, 7, 0.9)
+            spiral(-2 + sx * 13, 3, 0.5, gold, 0.8, 8)
+        spiral(-2, 5, 0.7, gold, 1.0, 12)
+    img = gfx.downscale(cv, S)
+    img = pygame.transform.smoothscale(img, (size, size))
+    _CACHE[key] = img
+    return img
 
 
 # ================================================================ floating props
@@ -638,6 +811,11 @@ def draw_companion(surface: pygame.Surface, kind: str, look, x: int, y: int, t: 
         for i, (dx, dy) in enumerate(spots):
             img = prop("screen", 28)
             surface.blit(img, img.get_rect(center=(x + dx, y + dy + 3 * math.sin(t * 2.2 + i * 2))))
+    elif kind == "fadhli" and path == 1 and tier >= 2:     # Johnny's stand: Tusk Act 1 (T2) / Act 3 (T3) / Act 4 (T4)
+        act = {2: 1, 3: 3, 4: 4}[tier]
+        size = {1: 34, 3: 42, 4: 54}[act]
+        img = tusk(act, size)
+        surface.blit(img, img.get_rect(center=(x + 36, y - 40 + bob * (1.4 if act == 4 else 1.0))))
     elif kind == "zizi" and path == 1 and tier >= 4:
         img = prop("pillow", 28)
         surface.blit(img, img.get_rect(center=(x + 34, y - 30 + bob)))

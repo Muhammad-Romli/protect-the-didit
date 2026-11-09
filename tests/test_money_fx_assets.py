@@ -38,7 +38,7 @@ run(g, 10); assert g.money - m0 == 2 * gain
 
 # 3. wave clear: one combined popup, Romli visuals
 g = new(); r = tower(g, "romli", (400, 160)); g.waves.number = 3; g.waves.active = True; g.waves._queue = []
-m0 = g.money; g._finish_wave(); from data.settings import WAVE_CLEAR_BONUS_BASE as B, WAVE_CLEAR_BONUS_PER_WAVE as PW; expected = B + PW * 3 + 25; print("wave money:", g.money - m0, "expected", expected); assert g.money - m0 == expected
+m0 = g.money; g._finish_wave(); from data.settings import WAVE_CLEAR_BONUS_BASE as B, WAVE_CLEAR_BONUS_PER_WAVE as PW; from data.towers import TOWERS as _TW; expected = B + PW * 3 + _TW["romli"]["stats"]["income_per_wave"]; print("wave money:", g.money - m0, "expected", expected); assert g.money - m0 == expected
 run(g, 0.5); print("popups:", [p[0] for p in g.ui.popups]); assert [p[0] for p in g.ui.popups] == [f"+${expected}"]
 
 # 4. fullscreen toggle: no crash (headless can't prove real fullscreen)

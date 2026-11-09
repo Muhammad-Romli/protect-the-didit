@@ -164,9 +164,7 @@ class Touch:
     def _on_down(self, pos) -> bool:
         g = self.game
         if not self.playing:
-            if self.again.collidepoint(pos):
-                g.fx.click()
-                g.reset()
+            g.end_click(pos)   # PLAY AGAIN / MAIN MENU
             return True
         if g.paused:
             g.paused = False   # any tap resumes
@@ -265,8 +263,7 @@ class Touch:
             return
         g = self.game
         if not self.playing:
-            self._draw_again(s)
-            return
+            return   # Game draws the end-screen buttons itself
         if g.options_open or g.paused:
             return
         if self.pending() and self.ghost is not None:

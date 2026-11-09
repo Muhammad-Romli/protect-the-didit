@@ -5,10 +5,6 @@ SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 MAX_DT = 0.05  # clamp so a lag spike never teleports enemies
 
-# Damage popups appear only for large hits; fonts and colors escalate by stage.
-DAMAGE_STAGES = ((8, 20, (255, 210, 70)), (18, 25, (255, 115, 35)),
-                 (40, 31, (230, 35, 45)), (80, 39, (110, 20, 70)))
-
 # Layout as (x, y, w, h). BTD6-style: the map fills the whole window, the HUD floats on top,
 # a wooden bar sits at the bottom. Towers can only be placed above the bar (BUILD_RECT).
 PLAYFIELD_RECT = (0, 0, 1280, 720)
@@ -84,3 +80,14 @@ COLORS = {
 
 # Autosave: a snapshot is stored (browser localStorage / savegame.json) after every Nth cleared wave
 SAVE_EVERY_WAVES = 3
+
+# Didit Rupiah: the meta currency earned when a run ends (win or lose) and spent in the main-menu shop (data/shop.py).
+COINS_PER_WAVE = 15        # per wave cleared in THIS run (a continued run only pays for the waves played since the save)
+COINS_WIN_BONUS = 200      # extra for surviving the last wave
+
+# DiditCode (Romli's ability, preparation phase only): find the buggy line, then pick the fix.
+DIDITCODE_REWARD_BASE = 150        # $ for a solved snippet ... (the game keeps running while you solve it)
+DIDITCODE_REWARD_PER_WAVE = 20     # ... plus this per wave number (wave 10: $350, wave 30: $750)
+DIDITCODE_STRIKES = 2              # wrong picks allowed (a wrong line or a wrong fix is one strike)
+DIDITCODE_COOLDOWN = 40.0          # seconds (game time) before the same Romli can open it again
+DIDITCODE_MAX_PER_PREP = 2         # attempts per preparation phase, all Romlis together

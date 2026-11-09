@@ -85,6 +85,10 @@ class FX:
         self.muzzle(tower, tower.pos + tower.aim * 22 + pygame.Vector2(14 if tower.aim.x >= 0 else -14, -12))
 
     def trail(self, proj) -> None:
+        src = getattr(proj, "source", None)
+        if src is not None and src.kind == "fadhli":
+            self._fadhli_trail(proj, src)
+            return
         if random.random() < 0.7:
             self.vfx.trail(proj.pos, proj.color)
 
@@ -151,6 +155,8 @@ class FX:
         elif kind == "bima":
             self.vfx.burst(pos, (255, 190, 110), 4, 90, 0.35, 3, 40)
             self.vfx.pop(pos, 20, (255, 170, 80), 0.12)
+        elif kind == "fadhli":
+            self._fadhli_hit(enemy, source)
 
     def muzzle(self, tower, tip) -> None:
         self.vfx.pop(tip, 22 + 3 * (tower.tiers[0] + tower.tiers[1]), tower.color, 0.1)
@@ -227,10 +233,46 @@ class FX:
         self.vfx.flash((140, 90, 220), 80, 0.3)
 
     def graph_fire(self, tower, cost: int) -> None:
+        """Bima fires a curve: muzzle flash, expanding rings, a shower of sparks and a small screen kick."""
         self.audio.play("graph_fire")
-        self.vfx.pop(tower.pos, 40, (255, 190, 90), 0.25)
-        self.vfx.ring(tower.pos, 8, 34, 0.25, (255, 200, 120), 3)
+        self.vfx.pop(tower.pos, 34, (255, 190, 100), 0.18)
+        self.vfx.ring(tower.pos, 8, 54, 0.3, (255, 210, 130), 4)
+        self.vfx.ring(tower.pos, 4, 34, 0.22, (255, 255, 255), 2)
+        self.vfx.burst(tower.pos, (255, 190, 90), 14, 220, 0.5, 4, 40)
+        self.vfx.burst(tower.pos, (255, 255, 255), 6, 160, 0.35, 3, 0)
+        self.vfx.shake(3 + min(4, cost / 8), 0.12)
         self.vfx.text(tower.pos + pygame.Vector2(0, -52), f"-{cost}", (130, 215, 255), 24, 0.8, 30)
+
+    def graph_trail(self, pos) -> None:
+        """Sparks shed by the head of a travelling curve."""
+        self.vfx.burst(pos, (255, 200, 100), 2, 90, 0.35, 3, 0)
+        self.vfx.trail(pos, (255, 255, 255))
+
+    def graph_hit(self, enemy, damage: float, k: int, prev_pos=None, first: bool = False) -> None:
+        """A curve hit: ring + sparks + a BIG damage number (bigger numbers for bigger hits) + chain lightning to the
+        previous Didit the same curve hit. The first hit of a curve also gives a tiny hit-stop and a screen kick."""
+        col = (255, 200, 90)
+        big = min(1.0, damage / 60)
+        self.vfx.ring(enemy.pos, 6, 40 + 24 * big, 0.32, col, 4)
+        self.vfx.ring(enemy.pos, 3, 24, 0.2, (255, 255, 255), 2)
+        self.vfx.burst(enemy.pos, col, 10 + int(8 * big), 210, 0.5, 4, 120)
+        self.vfx.burst(enemy.pos, (255, 255, 255), 5, 150, 0.3, 3, 0)
+        size = int(24 + 22 * big)
+        self.vfx.text(enemy.pos + pygame.Vector2(random.uniform(-8, 8), -30), f"{int(damage)}", (255, 238, 150) if big < 0.6 else (255, 150, 70),
+                      size, 0.9, 46)
+        if prev_pos is not None:
+            self.vfx.lightning(prev_pos, enemy.pos, (255, 225, 140), 0.28, 4, 12)
+        if first:
+            self.vfx.shake(2.5 + 3 * big, 0.14)
+
+    def graph_done(self, tower, hits: int, total: float) -> None:
+        """The curve is over: a combo banner when it hit several Didits."""
+        if hits >= 3:
+            self.audio.play("wave_money")
+            words = ("COMBO", "f(x)!", "QED!", "SIGMA!")[min(3, hits // 3 - 1)] if hits >= 3 else "COMBO"
+            self.vfx.comic(tower.pos + pygame.Vector2(0, -78), f"{words} x{hits}", (255, 214, 90), 40 + min(16, hits * 2), 0.9)
+            self.vfx.text(tower.pos + pygame.Vector2(0, -108), f"{int(total)} total", (255, 240, 200), 24, 1.1, 30)
+            self.vfx.flash((255, 220, 140), 40, 0.12)
 
     def shape_hit(self, enemy, shape: int, solid: bool) -> None:
         self.audio.play(("shape_sq", "shape_tri", "shape_circ")[shape])
@@ -309,6 +351,171 @@ class FX:
         if enemy.gives_money:
             self.audio.play("coin")
             self.vfx.text(enemy.pos + pygame.Vector2(0, -16), f"+${enemy.bounty}", GOLD, 22, 0.9, 38)
+
+    # ------------------------------------------------------------- Fadhli
+    # Garp (path A): heavy and loud. Johnny (path B): metallic, with a tornado on every hit.
+    def _fadhli_trail(self, proj, src) -> None:
+        from game import fadhli
+        if fadhli.is_johnny(src):          # cold sparks + a thin silver spiral behind the steel ball
+            self.vfx.trail(proj.pos, (200, 235, 255))
+            if random.random() < 0.6:
+                a = pygame.time.get_ticks() / 40
+                self.vfx.burst(proj.pos + pygame.Vector2(math.cos(a), math.sin(a)) * 6, (255, 220, 110), 1, 20, 0.25, 2, 0)
+        else:                              # smoke and embers behind the cannonball
+            k = 2.0 if getattr(proj, "mega", False) else 1.0
+            self.vfx.burst(proj.pos, (90, 84, 80), 1, 24 * k, 0.45 * k, 5 * k, -20)
+            if random.random() < 0.8:
+                self.vfx.burst(proj.pos, (255, 150, 60), 1, 40 * k, 0.3, 3 * k, 30)
+            if k > 1:
+                self.vfx.pop(proj.pos, 46, (255, 200, 90), 0.1)
+
+    def fadhli_charge_start(self, t) -> None:
+        from game import fadhli
+        if fadhli.is_johnny(t):
+            self.audio.play("steel_spin")
+        else:
+            self.audio.play("galaxy_charge" if t.charge_mega else "garp_charge")
+            self.vfx.ring(t.pos, 6, 36, 0.25, (255, 255, 255), 2)
+
+    def fadhli_charging(self, t, f: float) -> None:
+        """Called every 0.05s while charging: particles are pulled into him, dust rises, the charge builds."""
+        from game import fadhli
+        if fadhli.is_johnny(t):
+            hand = t.pos + pygame.Vector2(14 if t.aim.x >= 0 else -14, -14)
+            self.vfx.suck(hand, 20 + 10 * (1 - f), (190, 230, 255), 2, 0.12, 2)
+            return
+        big = 1.7 if t.charge_mega else 1.0
+        col = (255, 236, 130) if t.charge_mega else (255, 150, 60)
+        self.vfx.suck(t.pos + pygame.Vector2(0, -28), (74 - 40 * f) * big, col, 2 + int(4 * f), 0.32, 3 + 2 * f)
+        self.vfx.burst(t.pos + pygame.Vector2(random.uniform(-22, 22), 10), (170, 140, 100), 1, 34, 0.55, 3, -90)   # dust lifting off
+        if t.charge_mega and random.random() < 0.5:
+            self.vfx.lightning(t.pos + pygame.Vector2(random.uniform(-40, 40), 8), t.pos + pygame.Vector2(random.uniform(-10, 10), -58),
+                               (255, 255, 200), 0.12, 1, 10)
+
+    def fadhli_cancel(self, t) -> None:
+        self.vfx.burst(t.pos + pygame.Vector2(0, -20), (200, 200, 200), 8, 60, 0.4, 3, 0)
+
+    def fadhli_throw(self, t, mega: bool) -> None:
+        from game import fadhli
+        tip = t.pos + pygame.Vector2(14 if t.aim.x >= 0 else -14, -14)
+        if fadhli.is_johnny(t):
+            self.audio.play("steel_throw")
+            self.vfx.pop(tip, 24, (190, 230, 255), 0.1)
+            self.vfx.ring(tip, 4, 18, 0.12, (255, 226, 120), 2)
+            return
+        self.audio.play("garp_throw")
+        r = 120 if mega else 62
+        self.vfx.ring(t.pos, 8, r, 0.35 if mega else 0.25, (255, 255, 255), 5 if mega else 4)
+        self.vfx.ring(t.pos, 6, r * 0.7, 0.3, (255, 150, 60), 3)
+        self.vfx.pop(tip, 56 if mega else 36, (150, 85, 30), 0.18)
+        self.vfx.burst(t.pos + pygame.Vector2(0, 8), (170, 140, 100), 14 if mega else 8, 160, 0.5, 4, -20)
+        self.vfx.shake(7 if mega else 2.5 + t.tiers[0] * 0.5, 0.25 if mega else 0.14)
+        if mega:
+            self.vfx.flash((255, 220, 150), 40, 0.2)
+            self.vfx.comic(t.pos + pygame.Vector2(0, -76), "GALAXY IMPACT!", (255, 200, 90), 44, 1.0)
+        elif t.tiers[0] >= 3 and random.random() < 0.35:
+            self.vfx.comic(t.pos + pygame.Vector2(0, -70), random.choice(["FIST OF LOVE!", "HAAAH!"]), (255, 170, 80), 32, 0.8)
+
+    def projectile_hit(self, p, victims) -> None:
+        """Once per landing projectile (before the per-victim effects). Garp: a crater, a shockwave and a boom."""
+        src = getattr(p, "source", None)
+        if src is None or src.kind != "fadhli":
+            return
+        from game import fadhli
+        if fadhli.is_johnny(src):
+            return
+        mega = getattr(p, "mega", False)
+        big = 1.0 + 0.25 * src.tiers[0]
+        self.audio.play("galaxy_impact" if mega else "garp_impact")
+        r = max(p.aoe_radius, 30) * (1.0 if mega else 1.0)
+        self.vfx.ring(p.pos, 6, r * 1.1, 0.28, (255, 255, 255), 6)
+        self.vfx.ring(p.pos, 6, r * 0.8, 0.4, (255, 150, 60), 4)
+        self.vfx.pop(p.pos, r * (0.9 if mega else 0.8), (80, 45, 12), 0.2)
+        self.vfx.burst(p.pos, (150, 120, 90), int(10 * big) + (24 if mega else 0), 210, 0.6, 5, 240)   # flying rubble
+        self.vfx.burst(p.pos, (255, 160, 70), int(6 * big), 180, 0.35, 4, 40)
+        for i in range(5 if not mega else 7):                                                                 # cracks in the ground
+            a = random.uniform(0, math.tau)
+            ln = r * random.uniform(0.7, 1.4)
+            self.vfx.lightning(p.pos, p.pos + pygame.Vector2(math.cos(a), math.sin(a) * 0.6) * ln, (255, 170, 80), 0.3, 2, 6)
+        self.vfx.shake((5 + 1.2 * src.tiers[0]) * (1.8 if mega else 1.0), 0.3 if mega else 0.18)
+        if mega:
+            self.vfx.flash((255, 235, 190), 38, 0.25)
+            self.vfx.comic(p.pos + pygame.Vector2(0, -50), "BOOOOM!", (255, 210, 100), 58, 1.2)
+        elif self._comic_cd <= 0 and random.random() < 0.4:
+            self._comic_cd = COMIC_GAP
+            self.vfx.comic(p.pos + pygame.Vector2(0, -34), random.choice(["WHAM!", "KA-BOOM!", "CRUSH!"]), (255, 170, 80), 38)
+
+    def _fadhli_hit(self, enemy, src) -> None:
+        from game import fadhli
+        pos = enemy.pos
+        if fadhli.is_johnny(src):
+            self.audio.play("steel_hit")
+            self.audio.play("tornado")
+            self.vfx.tornado(pos, 0.85, 1.15 + (0.6 if enemy.is_boss else 0.0), (170, 220, 255))
+            self.vfx.burst(pos, (220, 240, 255), 5, 130, 0.3, 3, 0)
+            self.vfx.burst(pos, (255, 214, 90), 3, 100, 0.3, 2, 0)
+            self.vfx.pop(pos, 22, (90, 130, 170), 0.12)
+            if self._comic_cd <= 0 and random.random() < 0.08:
+                self._comic_cd = COMIC_GAP
+                self.vfx.comic(pos + pygame.Vector2(0, -26), random.choice(["SPIN!", "WRYYY!", "TWIST!"]), (190, 230, 255), 30)
+        elif fadhli.is_garp(src):
+            self.vfx.burst(pos, (255, 170, 80), 6, 160, 0.3, 4, 60)
+            self.vfx.burst(pos, (150, 120, 90), 4, 120, 0.4, 4, 160)
+        else:
+            self.vfx.burst(pos, (170, 150, 120), 4, 100, 0.3, 3, 60)
+
+    def fadhli_bounce(self, a, b, n: int) -> None:
+        self.audio.play("bounce")
+        self.vfx.lightning(a, b, (210, 240, 255), 0.16, 3, 5)
+        self.vfx.ring(a, 4, 22, 0.18, (255, 226, 120), 3)
+        self.vfx.text(pygame.Vector2(a) + pygame.Vector2(0, -22), f"x{n + 1}", (255, 226, 120), 20, 0.5, 26)
+
+    def fadhli_ball_stops(self, pos) -> None:
+        self.vfx.burst(pos, (200, 220, 240), 5, 70, 0.3, 3, 120)
+
+    def fadhli_stun(self, enemy) -> None:
+        self.audio.play("stun_ding")
+        self.vfx.text(enemy.pos + pygame.Vector2(0, -28), "STUN!", (255, 236, 120), 24, 0.9, 26)
+        for i in range(5):
+            a = i / 5 * math.tau
+            self.vfx.burst(enemy.pos + pygame.Vector2(math.cos(a) * 12, -12 + math.sin(a) * 4), (255, 236, 120), 1, 20, 0.6, 3, 0)
+
+    def fadhli_slow(self, enemy) -> None:
+        self.vfx.text(enemy.pos + pygame.Vector2(0, -28), "SLOW", (150, 210, 255), 22, 0.8, 24)
+        self.vfx.ring(enemy.pos, 4, enemy.radius + 12, 0.3, (150, 210, 255), 3)
+
+    def fadhli_barrage(self, t, victims) -> None:
+        self.audio.play("barrage")
+        stand = t.pos + pygame.Vector2(36, -40)
+        self.vfx.burst(stand, (255, 226, 110), 5, 150, 0.2, 3, 0)
+        for e in victims[:4]:
+            self.vfx.burst(e.pos, (255, 235, 150), 4, 140, 0.2, 3, 0)
+            self.vfx.pop(e.pos + pygame.Vector2(random.uniform(-8, 8), random.uniform(-8, 8)), 22, (255, 226, 110), 0.1)
+        if self._comic_cd <= 0 and random.random() < 0.15:
+            self._comic_cd = COMIC_GAP
+            self.vfx.comic(t.pos + pygame.Vector2(random.uniform(-20, 20), -64), random.choice(["BARRAGE!", "TUSK!", "ACT 4!"]), (255, 226, 110), 30)
+
+    def golden_on(self, t) -> None:
+        self.audio.play("golden")
+        for k in range(3):
+            self.vfx.ring(t.pos, 8, 40 + 30 * k, 0.4 + 0.2 * k, (255, 214, 70), 4 - k)
+        self.vfx.pop(t.pos, 90, (255, 226, 120), 0.4)
+        self.vfx.flash((255, 220, 120), 50, 0.25)
+        for i in range(26):                                      # a golden spiral of sparks
+            a = i * 0.45
+            r = 3 * 1.618 ** (a / 1.1)
+            self.vfx.burst(t.pos + pygame.Vector2(math.cos(a * 2) * r, math.sin(a * 2) * r * 0.6), (255, 214, 70), 1, 18, 0.9, 3, -50)
+        self.vfx.comic(t.pos + pygame.Vector2(0, -62), "GOLDEN RATIO!", (255, 214, 70), 38, 1.0)
+
+    def golden_off(self, t) -> None:
+        self.vfx.ring(t.pos, 6, 50, 0.3, (255, 214, 70), 3)
+
+    def galaxy_on(self, t) -> None:
+        self.audio.play("galaxy_on")
+        self.vfx.ring(t.pos, 8, 80, 0.4, (255, 150, 70), 5)
+        self.vfx.pop(t.pos, 80, (255, 190, 100), 0.35)
+        self.vfx.comic(t.pos + pygame.Vector2(0, -62), "GALAXY!", (255, 190, 90), 38, 1.0)
+        self.vfx.shake(3, 0.2)
 
     def armor_hit(self, enemy, broke: bool, hits: int) -> None:
         """A hit that only chipped armor: sparks + clang; bigger burst when the armor breaks."""

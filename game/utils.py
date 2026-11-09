@@ -67,6 +67,21 @@ def draw_outlined(surface: pygame.Surface, text: str, pos, size: int = 24, color
     return rect
 
 
+def draw_outlined_digits(surface: pygame.Surface, text: str, pos, size: int = 24, color=(255, 255, 255),
+                        width: int = 2, outline=(38, 24, 18)) -> pygame.Rect:
+    """Outlined text drawn glyph by glyph (anchor midleft) so a counter that changes every frame
+    reuses a handful of cached glyphs instead of building a new outlined surface per value."""
+    font = get_font(size)
+    x, rect = pos[0], None
+    for ch in text:
+        img = outlined_text(ch, size, color, outline, width)
+        pad = (img.get_width() - font.size(ch)[0]) // 2
+        r = surface.blit(img, img.get_rect(midleft=(x - pad, pos[1])))
+        rect = r if rect is None else rect.union(r)
+        x += font.size(ch)[0]
+    return rect
+
+
 def wrap_text(text: str, size: int, max_width: int) -> list[str]:
     """Greedy word wrap using the cached font."""
     font = get_font(size)

@@ -1,13 +1,17 @@
 # Protect The Didit
 
-2D tower defense built with Python and `pygame-ce`. Didit hamsters raid the Snack Stash; place and upgrade character towers to stop them.
+2D tower defense (BTD6-style) in Python + pygame-ce. Hamsters ("Didit") raid the Snack Stash.
 
 ## Run
-
-```bash
-pip install -r requirements.txt
+```
+pip install pygame-ce
 python main.py
 ```
+
+## Menu, shop and Snack Coins
+The game starts at a main menu: PLAY / CONTINUE, UNITS (characters and upgrade paths), SHOP (A'yun), DEVELOPERS (empty), EXIT.
+Finishing a run (win or lose) pays Snack Coins. Spend them in the SHOP on permanent buffs or one-use items (used from the POWERS button in a run).
+Your coins and purchases are saved in `profile.json` (browser: localStorage). Delete that file to reset them.
 
 ## Controls
 - Hotkeys: `1-3` place, `Space` start wave, `P` pause, `F` speed, `Q`/`W` upgrade, `X` sell (press twice).
@@ -16,42 +20,42 @@ python main.py
 - Green START button (Space), orange speed button (F), pause button top-right (P). `R` restarts.
 - Debug: `F1` overlay, `F2` +$1000, `F3` skip to next wave, `F4` free next upgrade on the selected tower.
 
-- `1`-`5`: select/place Jalu, Romli, Zizi, Bima, or Fadhli.
-- `Space`: start the next wave / skip preparation.
-- `P`: pause. `F`: cycle game speed. `Q` / `W`: upgrade path A / B. `X`: sell (press twice to confirm).
-- Click a tower to open its upgrade panel. Click empty ground to deselect.
-- `T` / `Shift+T`: change target priority. `O` or `Esc`: open Options.
-- `R`: restart. `F11` / `Alt+Enter`: fullscreen. `M`: mute.
-- Debug: `F1` overlay, `F2` add money and ball knowledge, `F3` skip to next wave, `F4` free next upgrade for the selected tower.
-- Active abilities: `E` / `C` / `V` (the selected tower's ability buttons, in panel order). Bima's Graph path uses the formula editor (`G` fires) and his Geometry path uses shape attacks.
-
-## Current content
-
-- Five towers: Jalu, Romli, Zizi, Bima, and Fadhli. Bima has Graph and Geometry paths but can choose only one. Jalu's first path choice locks the other path; Romli, Zizi, and Fadhli use the standard crosspath rule (one path to tier 4, the other to tier 1).
-- Fadhli is a petanque athlete who throws boules. Power path: high-arc shots, hot craters, and the Meteor active (three empowered shots, infinite range). Accuracy path: faster throws, a three-target bounce, steel-ball stun/slow, and the Arigatou, Gyro active (Spinned enemies and Golden Ratio damage).
-- 30 waves, multiple Didit variants, preparation-phase escalation, Jalu/Zizi preparation activities, active abilities, options, and save checkpoints.
-- Large hits show floating damage numbers that get bigger and redder with the damage.
-
 ## Phone / tablet
+Touch controls (tap-to-place with OK/cancel, formula keypad, ...), PWA and APK build: see `MOBILE.md`.
 
-Touch controls, PWA and Android build instructions: see `MOBILE.md`.
+## Display
+Resizable window; `F11` or `Alt+Enter` toggles fullscreen (the 1280x720 game is scaled to fit). Alt-tab pauses.
 
 ## Assets
+Sprites: `assets/sprites/` (see its README). Sounds: `assets/sfx/` (see its README). Missing files fall back to generated sounds / colored shapes.
 
-Optional sprite overrides live in `assets/sprites/`; optional sound overrides live in `assets/sfx/`. Missing files use generated visuals/sounds. See the README files inside those folders.
+## Tests
+`python tests/test_effects_and_qol.py`, `python tests/test_money_fx_assets.py`, `python tools/balance_bot.py` (all headless).
 
-## Tests and balance
+## Sound and effects
+All generated in code (no asset files). `M` mutes. To use real sounds, put files in `assets/sfx/` (see the README there).
 
-```bash
-python -m pytest tests -q
-python tools/balance_bot.py
-```
+## Preparation phase
+Before wave 1 and after each wave you are in PREPARATION: time moves (passive income still flows),
+but enemies get stronger the longer you wait (up to x3 HP, +30% speed by 1:30, then the wave starts by
+force). Select Jalu or Zizi and use the activity buttons (max 3 at once; they stop when the wave starts).
+Zizi: Slothing -> Laziness / Praying -> Blessing stacks (+1 per 5s, max 5, last one battle).
+Jalu: Larping -> +1 ball knowledge/s, required (with money) for every Jalu upgrade.
+Tuning: `PREP_*` in `data/settings.py`.
 
-Each test file also runs on its own, for example `python tests/test_fadhli.py`. The balance bot does not use Fadhli yet.
+## Status: foundation (≈ Day 1–6 of the CLAUDE.md plan, Pass 1)
+Done: game loop, map, enemies (4 types), waves 1–10, placement, "first" targeting, projectiles
+(single-target + AoE + slow), money/HUD, win/lose, 3 towers, generic upgrade system with the
+(4,1) rule using stat modifiers only, sell (70%), per-second / per-wave income, money-per-hit.
 
-## Documentation
+Preparation phase, 3-slot activities, Zizi stacks (unlocked by tier 2) and Jalu ball knowledge are done; Romli's activities are postponed.
+Effects done: pierce, chain lightning, time push, sleep, damage debuff, attack-speed auras, upgrade discount, boss-kill bonus (see CHANGELOG.md).
 
-- `TODO.md`: remaining ideas and known polish gaps; completed features should not be left here.
-- `CHANGELOG.md`: chronological implementation history.
-- `MOBILE.md`: phone, PWA, and Android notes.
-- `CLAUDE.md`: project rules and system reference for AI coding assistants. It is listed in `.gitignore`, so it only exists in local copies.
+Not done yet (data exists, behaviour doesn't): every named `effects` entry (pierce, chain lightning,
+time push, auras, random events, sleep, debuff, active skills), fusion, Jalu speech bubbles
+(`data/dialogue.py` is placeholders), sprites, sound, start screen. The upgrade panel marks tiers
+whose special effect is not implemented yet.
+
+- Extra keys: F cycles speed x1/x2/x3, T / Shift+T changes the selected tower's target priority, O or Esc opens Options (auto-start waves, volume, ...).
+
+- Bima (key 4): Graph path needs typing a formula (click the box, Enter fires, G repeats); Geometry path auto-attacks with shapes. Abilities E/C/V.

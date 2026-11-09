@@ -21,10 +21,10 @@ def tick(sec):
 t = Tower("bima", (500, 188)); t.upgrade(0); assert not t.can_upgrade(1)[0] and t.can_upgrade(0)[0]; print("one path only OK")
 
 # --- Graph
-b = mk((4, 0)); assert bima.brain_max(b) == 120
+b = mk((4, 0)); assert bima.brain_max(b) == GRAPH["brain_max"][4]
 b.formula = "x"; pv = bima.update_preview(b); assert "cost" in pv and abs(pv["length"] - (188 / 20) * 2 ** 0.5) < 0.5, pv.get("length")
 b.formula = "sin(x"; assert "Missing" in bima.update_preview(b)["error"]
-b.formula = "3sin(3x)"; assert bima.update_preview(b)["cost"] > 100; print("preview cost OK:", bima.update_preview(b)["cost"])
+b.formula = "3sin(3x)"; assert bima.update_preview(b)["cost"] > 55 and bima.update_preview(b)["cost"] > 2 * 20; print("preview cost OK:", bima.update_preview(b)["cost"])
 b.formula = "0"; b.graph_dir = 1; bima.update_preview(b)
 assert not bima.fire_graph(g, b)       # not in battle
 battle(); b.brain = 120; e1 = g.spawn_enemy("tanky", 1);

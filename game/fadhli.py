@@ -1,177 +1,344 @@
-"""Fadhli, the petanque athlete: shot damage (empowered shots, Golden Ratio ramp), steel-boule status rolls,
-the three-target bounce, craters, and the state indicators drawn on the tower.
+"""Fadhli: a thrower. Path A = Garp (heavy cannonballs), path B = Johnny + Tusk (bouncing steel balls).
 
-Numbers: data/fadhli.py. Tiers and prices: data/towers.py. Hooks:
-Tower.update -> tick / next_shot / prepare_projectile, Game._resolve_hit -> apply_status / after_hit / on_miss,
-Game._step -> tick_craters, Tower.draw -> draw_state / draw_stand_gag, actives.use -> start_gyro.
-pygame is imported lazily so the rules can be unit-tested without a display.
+All numbers live in data/fadhli.py. Hooks used by the rest of the game:
+  Tower.__init__    -> init_tower()
+  Tower.update      -> tick_tower()       (the whole attack cycle: charge -> release -> cooldown, barrage, ability timers)
+  effects.py        -> bounce(), status(), shove()   ("fadhli_bounce", "fadhli_status", "garp_knockback", on every hit)
+  actives.py        -> start_galaxy(), start_golden()
+  Tower.draw        -> draw_charge(), draw_barrage(), charge_shake()
+  Game.draw         -> draw_world() (the inner melee circle)
+
+Attack cycle: when the cooldown is over and a Didit is in range, Fadhli CHARGES (wind-up: particles are pulled in, he
+shakes, a ball grows above his head). When the charge is full the throw leaves his hand at the best target in range, and
+the cooldown starts. Attack-speed buffs speed up both the charge and the cooldown.
 """
 from __future__ import annotations
 
 import math
 import random
+from typing import TYPE_CHECKING
+
+import pygame
 
 from data import fadhli as cfg
+from game import gfx
+from game.projectile import Projectile
+from game.utils import Vec, draw_outlined
+
+if TYPE_CHECKING:
+    from game.enemy import Enemy
+    from game.game import Game
+    from game.tower import Tower
+
+GARP_COL = (255, 150, 60)
+MEGA_COL = (255, 236, 130)
+JOHNNY_COL = (170, 225, 255)
+GOLD = (255, 214, 70)
 
 
-# ------------------------------------------------------------------ shots
-def tick(tower, dt: float) -> None:
-    """Count the Gyro active down; when it ends the Golden Ratio sequence is dropped."""
-    if tower.gyro_timer > 0:
-        tower.gyro_timer = max(0.0, tower.gyro_timer - dt)
-        if tower.gyro_timer == 0:
-            tower.golden_damage = 0.0
+# ------------------------------------------------------------------ helpers
+def is_garp(t: "Tower") -> bool:
+    return t.kind == "fadhli" and t.tiers[0] > 0 and t.tiers[0] >= t.tiers[1]
 
 
-def start_gyro(tower) -> None:
-    """Arigatou, Gyro: 5 s window; the first shot deals 1/4 of normal damage (the ramp lives in golden_damage only)."""
-    tower.gyro_timer = cfg.GYRO_DURATION
-    tower.golden_damage = max(0.1, tower.stats["damage"] * cfg.GOLDEN_START_FRACTION)
+def is_johnny(t: "Tower") -> bool:
+    return t.kind == "fadhli" and t.tiers[1] > 0 and t.tiers[1] > t.tiers[0]
 
 
-def next_shot(tower) -> tuple[float, bool]:
-    """(damage, empowered) of the next boule. During Gyro the damage ramps x1.618 per shot (never touches the
-    tower's base damage); each Meteor shot uses up one empowered charge and hits harder."""
-    damage = tower.stats["damage"]
-    if tower.gyro_timer > 0:
-        damage = tower.golden_damage
-        tower.golden_damage *= cfg.GOLDEN_RATIO
-    empowered = tower.power_shots > 0
-    if empowered:
-        tower.power_shots -= 1
-        damage *= cfg.POWER_SHOT_MULT
-    return damage, empowered
+def init_tower(t: "Tower") -> None:
+    t.charging = False
+    t.charge_t = 0.0
+    t.charge_need = 1.0
+    t.charge_mega = False
+    t.charge_fx = 0.0        # timer between charge particles
+    t.mega_t = 0.0           # seconds the Galaxy Impact mega throw stays ready
+    t.golden_t = 0.0         # seconds of Golden Ratio left
+    t.golden_mult = 1.0      # damage multiplier of the NEXT throw while Golden Ratio runs
+    t.melee_cd = 0.0
+    t.barraging = 0.0        # >0 while the barrage hit something recently (drawing)
 
 
-def prepare_projectile(tower, proj, empowered: bool) -> None:
-    proj.high_arc = "fadhli_sky" in tower.effects
-    proj.bounces = cfg.BOUNCE_TARGETS if "fadhli_bounce" in tower.effects else 0
-    proj.power_crater = empowered
-    proj.make_crater = "fadhli_crater" in tower.effects
-    proj.gyro = tower.gyro_timer > 0
+def charge_time(t: "Tower") -> float:
+    if is_johnny(t):
+        return cfg.JOHNNY_CHARGE
+    return cfg.GARP_CHARGE[min(t.tiers[0], len(cfg.GARP_CHARGE) - 1)]
 
 
-# ------------------------------------------------------------------ hits
-def roll_status(rng=random) -> str:
-    """One roll per hit gives exactly one outcome: 'stun', 'slow' or 'none' (STUN_CHANCE / SLOW_CHANCE / rest)."""
-    roll = rng.random()
-    if roll < cfg.STUN_CHANCE:
-        return "stun"
-    if roll < cfg.STUN_CHANCE + cfg.SLOW_CHANCE:
-        return "slow"
-    return "none"
+def has_barrage(t: "Tower") -> bool:
+    return "fadhli_barrage" in t.effects
 
 
-def spin(enemy) -> None:
-    """Spinned: tornado look and a short stun. Bosses only get a short look; Enemy.stun ignores bosses."""
-    enemy.spinned_timer = cfg.SPIN_BOSS_DURATION if enemy.is_boss else cfg.SPIN_DURATION
-    enemy.stun(cfg.SPIN_STUN)
+def melee_radius(t: "Tower") -> float:
+    return min(cfg.MELEE_RADIUS, t.stats["range"] - 20)
 
 
-def apply_status(enemy, tower, gyro: bool) -> None:
-    """Status of one boule hit: Spinned during the Gyro active (replaces the roll), else the steel-ball roll."""
-    if gyro:
-        spin(enemy)
-    elif "fadhli_spin" in tower.effects:
-        outcome = roll_status()
-        if outcome == "stun":
-            enemy.stun(cfg.STUN_DURATION)
-        elif outcome == "slow":
-            enemy.apply_slow(cfg.SLOW_STRENGTH, cfg.SLOW_DURATION)
+# ------------------------------------------------------------ the attack cycle
+def tick_tower(t: "Tower", game: "Game", dt: float, rate: float) -> None:
+    """Called every simulation step instead of the generic attack code."""
+    if t.golden_t > 0:                                   # Golden Ratio also speeds him up (see GOLDEN_ATTACK_SPEED)
+        rate *= cfg.GOLDEN_ATTACK_SPEED
+    t.cooldown_left = max(0.0, t.cooldown_left - dt * rate)
+    t.barraging = max(0.0, t.barraging - dt)
+    if t.mega_t > 0:
+        t.mega_t = max(0.0, t.mega_t - dt)
+    if t.golden_t > 0:
+        t.golden_t -= dt
+        if t.golden_t <= 0:
+            t.golden_t, t.golden_mult = 0.0, 1.0
+            game.fx.golden_off(t)
+    if has_barrage(t):
+        _barrage(t, game, dt * (rate / cfg.GOLDEN_ATTACK_SPEED if t.golden_t > 0 else rate))   # the barrage keeps its own pace
+
+    if t.charging:
+        t.charge_t += dt * rate
+        f = min(1.0, t.charge_t / t.charge_need)
+        tgt = t.pick_target(game.enemies)
+        if tgt is not None and tgt.pos != t.pos:
+            t.aim = (tgt.pos - t.pos).normalize()
+        t.charge_fx -= dt
+        if t.charge_fx <= 0:
+            t.charge_fx = 0.05
+            game.fx.fadhli_charging(t, f)
+        if t.charge_t >= t.charge_need:
+            t.charging = False
+            if tgt is None:                  # everyone left the range during the wind-up: the throw is lost
+                t.charge_mega = False
+                game.fx.fadhli_cancel(t)
+            else:
+                _release(t, game, tgt)
+        return
+    if t.cooldown_left > 0:
+        return
+    target = t.pick_target(game.enemies)
+    if target is None:
+        return
+    _start_charge(t, game)
 
 
-def after_hit(game, p, victims) -> None:
-    """Landing effects of a boule that hit: hot crater, then the bounce."""
-    if p.make_crater:
-        add_crater(game, p)
-    if p.bounces:
-        bounce(game, p, victims)
+def _start_charge(t: "Tower", game: "Game") -> None:
+    t.charging = True
+    t.charge_t = 0.0
+    t.charge_mega = t.mega_t > 0 and "galaxy_active" in t.effects
+    if t.charge_mega:
+        t.mega_t = 0.0
+    t.charge_need = max(0.05, charge_time(t) * (cfg.GALAXY_CHARGE_MULT if t.charge_mega else 1.0))
+    t.charge_fx = 0.0
+    game.fx.fadhli_charge_start(t)
 
 
-def on_miss(p) -> None:
-    """The target died before the boule landed: an empowered shot is not used up."""
-    if p.power_crater and p.source is not None:
-        p.source.power_shots = min(cfg.POWER_SHOTS, p.source.power_shots + 1)
+def _release(t: "Tower", game: "Game", target: "Enemy") -> None:
+    s = t.stats
+    mega = t.charge_mega
+    t.charge_mega = False
+    damage = s["damage"]
+    if t.golden_t > 0:                                   # Golden Ratio: D/4, then x1.618 after every throw
+        damage *= t.golden_mult
+        t.golden_mult = min(cfg.GOLDEN_MAX_MULT, t.golden_mult * cfg.PHI)
+    aoe = s["aoe_radius"]
+    if mega:
+        damage = s["damage"] * cfg.GALAXY_DAMAGE_MULT
+        aoe = max(cfg.GALAXY_AOE_MIN, aoe * cfg.GALAXY_AOE_MULT)
+    hand = t.pos + Vec(14 if t.aim.x >= 0 else -14, -14)
+    p = Projectile(hand, target, s["proj_speed"], damage, aoe, s["slow"], s["slow_duration"], s["money_per_hit"], t.color, t)
+    p.mega = mega
+    p.scale = 2.0 if mega else cfg.GARP_PROJ_SCALE
+    p.total = max(1.0, hand.distance_to(target.pos))
+    if is_johnny(t):
+        p.arc = 0.0
+        if "fadhli_bounce" in t.effects:
+            p.bounce_chance = cfg.BOUNCE_START_CHANCE
+    else:
+        p.arc = cfg.GALAXY_ARC if mega else cfg.GARP_ARC
+    game.projectiles.append(p)
+    t.cooldown_left = s["cooldown"]
+    t.kick = 0.18
+    if target.pos != t.pos:
+        t.aim = (target.pos - t.pos).normalize()
+    game.fx.fadhli_throw(t, mega)
 
 
-def bounce(game, p, victims) -> list:
-    """Jump to up to `p.bounces` more enemies, each within BOUNCE_RADIUS of the last one hit. One shot never
-    hits the same enemy twice. Returns the enemies hit by the bounce."""
-    hit_ids = p.hit_ids
-    hit_ids.update(id(e) for e in victims)
-    at = p.pos.copy()
-    hits = []
-    for _ in range(p.bounces):
-        cands = [e for e in game.enemies
-                 if e.alive and id(e) not in hit_ids and e.pos.distance_to(at) <= cfg.BOUNCE_RADIUS]
-        if not cands:
-            break
-        e = min(cands, key=lambda c: c.pos.distance_to(at))
-        hit_ids.add(id(e))
-        game.fx.vfx.lightning(at, e.pos, (235, 235, 215), 0.12, 3, 3)
-        apply_status(e, p.source, p.gyro)
-        game.hit_enemy(e, p.damage, color=p.color, source=p.source)
-        hits.append(e)
-        at = e.pos.copy()
-    return hits
+# ----------------------------------------------------------------- on-hit effects
+def bounce(game: "Game", tower: "Tower", p: Projectile, victims: list) -> None:
+    """Johnny tier 2+: after a hit the steel ball keeps going with chance `p.bounce_chance` (50%, then -5 points per bounce)."""
+    if p.melee or p.bounce_chance <= 0 or p.bounces >= cfg.BOUNCE_MAX:
+        return
+    if random.random() >= p.bounce_chance:
+        game.fx.fadhli_ball_stops(p.pos)
+        return
+    cands = [e for e in game.enemies
+             if e.alive and e is not p.target and p.pos.distance_to(e.pos) <= cfg.BOUNCE_RANGE + e.radius]
+    if not cands:
+        game.fx.fadhli_ball_stops(p.pos)
+        return
+    cands.sort(key=lambda e: (e in p.hit_list, p.pos.distance_to(e.pos)))   # prefer Didits this ball has not hit yet
+    nxt = cands[0]
+    q = Projectile(p.pos, nxt, tower.stats["proj_speed"] * cfg.BOUNCE_SPEED_MULT, p.damage, p.aoe_radius,
+                   p.slow, p.slow_duration, p.money_on_hit, p.color, tower)
+    q.bounces = p.bounces + 1
+    q.bounce_chance = max(0.0, round(p.bounce_chance - cfg.BOUNCE_DECAY, 6))   # rounded: no float drift
+    q.hit_list = [*p.hit_list, p.target]
+    q.total = max(1.0, p.pos.distance_to(nxt.pos))
+    game.projectiles.append(q)
+    game.fx.fadhli_bounce(p.pos, nxt.pos, q.bounces)
 
 
-# ------------------------------------------------------------------ craters
-def add_crater(game, p) -> None:
-    """Crater record: [position, radius, dps, seconds left, source tower, seconds since the last hit]."""
-    radius, dps = ((cfg.POWER_CRATER_RADIUS, cfg.POWER_CRATER_DPS) if p.power_crater
-                   else (cfg.CRATER_RADIUS, cfg.CRATER_DPS))
-    game.craters.append([p.pos.copy(), radius, dps, cfg.CRATER_DURATION, p.source, 0.0])
-    game.fx.vfx.ring(p.pos, 8, radius, 0.5, (255, 100, 30), 4)
-
-
-def tick_craters(game, dt: float) -> None:
-    """Every CRATER_TICK seconds a crater hits each enemy inside it for DPS * tick, through Game.hit_enemy
-    (armor loses one hit per tick; a hit every frame would strip armor at once and spam particles and sound)."""
-    for crater in game.craters:
-        pos, radius, dps, _left, source, _since = crater
-        crater[3] -= dt
-        crater[5] += dt
-        if crater[5] < cfg.CRATER_TICK:
+def status(game: "Game", tower: "Tower", p: Projectile, victims: list) -> None:
+    """Johnny tier 3+: every hit rolls once: 20% stun, 30% slow, 50% nothing."""
+    if p.melee:
+        return
+    for e in victims:
+        if not e.alive:
             continue
-        crater[5] -= cfg.CRATER_TICK
-        for enemy in game.enemies:
-            if enemy.alive and enemy.pos.distance_to(pos) <= radius + enemy.radius:
-                game.hit_enemy(enemy, dps * cfg.CRATER_TICK, color=(255, 105, 35), source=source)
-    game.craters = [c for c in game.craters if c[3] > 0]
+        r = random.random()
+        if r < cfg.STATUS_STUN_CHANCE:
+            if not e.is_boss:
+                e.stun(cfg.STATUS_STUN_TIME)
+                game.fx.fadhli_stun(e)
+        elif r < cfg.STATUS_STUN_CHANCE + cfg.STATUS_SLOW_CHANCE:
+            e.apply_slow(cfg.STATUS_SLOW, cfg.STATUS_SLOW_TIME)
+            game.fx.fadhli_slow(e)
 
 
-# ------------------------------------------------------------------ drawing
-def draw_state(surface, tower, x: int, y: int) -> None:
-    """Orange pips = empowered Meteor shots left; cyan bar = time left of Arigatou, Gyro."""
-    import pygame
-    from data.settings import TOWER_RADIUS
-    top = y - TOWER_RADIUS * 3 - 4
-    for i in range(tower.power_shots):
-        px = x - (tower.power_shots - 1) * 5 + i * 10
-        pygame.draw.circle(surface, (36, 20, 14), (px, top), 5)
-        pygame.draw.circle(surface, (255, 120, 45), (px, top), 4)
-    if tower.gyro_timer > 0:
-        bar = pygame.Rect(x - 17, top - 9, 34, 6)
-        pygame.draw.rect(surface, (20, 40, 50), bar.inflate(2, 2), border_radius=3)
-        frac = tower.gyro_timer / cfg.GYRO_DURATION
-        pygame.draw.rect(surface, (100, 220, 230), (bar.x, bar.y, max(2, int(bar.w * frac)), bar.h), border_radius=3)
+def shove(game: "Game", tower: "Tower", p: Projectile, victims: list) -> None:
+    """Garp tier 3+: heavy hits knock Didits back along the path (bosses only a quarter as far)."""
+    if p.melee:
+        return
+    for e in victims:
+        if not e.alive or game.time < getattr(e, "garp_kb_ready", 0.0):
+            continue
+        e.garp_kb_ready = game.time + cfg.GARP_KNOCKBACK_INTERVAL
+        dist = cfg.GARP_KNOCKBACK_DISTANCE * (cfg.GARP_KNOCKBACK_BOSS_MULT if e.is_boss else 1.0)
+        e.distance = max(0.0, e.distance - dist)
+        e.pos = e.path.position_at(e.distance)
+        game.fx.knocked(e)
 
 
-def draw_stand_gag(surface, tower, x: int, y: int) -> None:
-    """Original, deliberately childlike stand gag beside him: wonky crayon strokes and mismatched eyes
-    (Accuracy tier 3; tier 4 adds more doodles)."""
-    import pygame
-    wiggle = int(math.sin(pygame.time.get_ticks() / 110) * 2)
-    cx, cy = x + 29, y - 39
-    pygame.draw.circle(surface, (255, 240, 150), (cx, cy), 15, 2)
-    pygame.draw.line(surface, (80, 65, 170), (cx - 10, cy - 8), (cx + 8, cy - 12 + wiggle), 4)
-    pygame.draw.line(surface, (230, 70, 90), (cx - 8, cy + 9), (cx + 12, cy + 5), 3)
-    pygame.draw.circle(surface, (25, 25, 40), (cx - 4, cy - 2), 2)
-    pygame.draw.circle(surface, (25, 25, 40), (cx + 6, cy + 1), 3)
-    pygame.draw.line(surface, (255, 220, 80), (cx + 2, cy + 13), (cx + 20, cy + 17), 3)
-    if tower.tiers[1] >= 4:
-        pygame.draw.line(surface, (80, 190, 230), (cx - 14, cy - 13), (cx - 21, cy - 22 + wiggle), 2)
-        pygame.draw.line(surface, (245, 90, 160), (cx + 13, cy - 7), (cx + 23, cy - 2), 2)
-        pygame.draw.circle(surface, (255, 255, 255), (cx + 17, cy - 15), 2)
-        pygame.draw.line(surface, (70, 45, 120), (cx - 6, cy + 5), (cx + 5, cy + 3), 2)
+# ------------------------------------------------------------------- the barrage
+def _barrage(t: "Tower", game: "Game", dt: float) -> None:
+    """Tusk Act 4: melee hits on every Didit inside the inner circle, at the same time as the throws."""
+    t.melee_cd -= dt
+    if t.melee_cd > 0:
+        return
+    r = melee_radius(t)
+    inside = [e for e in game.enemies if e.alive and t.pos.distance_to(e.pos) <= r + e.radius]
+    if not inside:
+        t.melee_cd = 0.0
+        return
+    t.melee_cd = cfg.MELEE_INTERVAL
+    inside.sort(key=lambda e: t.pos.distance_to(e.pos))
+    dmg = t.stats["damage"] * cfg.MELEE_DAMAGE_MULT
+    t.barraging = 0.3
+    hit = inside[:cfg.MELEE_MAX_TARGETS]
+    for e in hit:
+        game.hit_enemy(e, dmg, color=(255, 226, 110), source=None)
+    game.fx.fadhli_barrage(t, hit)
+
+
+# ----------------------------------------------------------------------- abilities
+def start_galaxy(game: "Game", t: "Tower") -> bool:
+    """Garp tier 4: the next throw becomes a giant mega throw (charges longer, hits far harder, huge splash)."""
+    if t.charge_mega or t.mega_t > 0:
+        return False
+    t.mega_t = cfg.GALAXY_WINDOW
+    game.fx.galaxy_on(t)
+    return True
+
+
+def start_golden(game: "Game", t: "Tower") -> bool:
+    """Johnny tier 4: Golden Ratio. For 5 s the damage is divided by 4, then x1.618 after every throw."""
+    if t.golden_t > 0:
+        return False
+    t.golden_t = cfg.GOLDEN_DURATION
+    t.golden_mult = 1.0 / cfg.GOLDEN_START_DIVISOR
+    game.fx.golden_on(t)
+    return True
+
+
+# ---------------------------------------------------------------------------- drawing
+def charge_frac(t: "Tower") -> float:
+    return min(1.0, t.charge_t / t.charge_need) if getattr(t, "charging", False) else 0.0
+
+
+def charge_shake(t: "Tower") -> tuple[int, int]:
+    """Garp trembles while he charges (more with every bit of charge)."""
+    if not getattr(t, "charging", False) or is_johnny(t):
+        return 0, 0
+    a = 0.4 + 2.2 * charge_frac(t) * (1.6 if t.charge_mega else 1.0)
+    return round(random.uniform(-a, a)), round(random.uniform(-a * 0.5, a * 0.5))
+
+
+def draw_charge(surface: pygame.Surface, t: "Tower", x: int, y: int) -> None:
+    """Charging visuals: a ball growing above Garp's head with a heat glow, ground cracks and a shrinking ring;
+    Johnny: a small gold spin ring at his hand and a stand glow."""
+    if not getattr(t, "charging", False):
+        return
+    f = charge_frac(t)
+    mega = t.charge_mega
+    pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / (60 if f < 0.7 else 35))
+    if is_johnny(t):
+        hx = x + (14 if t.aim.x >= 0 else -14)
+        g = gfx.glow(int(16 + 14 * f), JOHNNY_COL, int(90 + 110 * f))
+        surface.blit(g, g.get_rect(center=(hx, y - 14)), special_flags=pygame.BLEND_RGB_ADD)
+        for i in range(3):
+            a = pygame.time.get_ticks() / 90 + i * math.tau / 3
+            pygame.draw.circle(surface, GOLD, (int(hx + math.cos(a) * (10 + 4 * f)), int(y - 14 + math.sin(a) * 5)), 2)
+        return
+    col = MEGA_COL if mega else GARP_COL
+    big = 1.7 if mega else 1.0
+    g = gfx.glow(int((22 + 22 * f) * big), col, int(25 + 45 * f))                       # heat glow around him
+    surface.blit(g, g.get_rect(center=(x, y - 24)), special_flags=pygame.BLEND_RGB_ADD)
+    rad = (6 + 9 * f) * (1.8 if mega else 1.0)                                              # the ball above his head
+    by = y - 58 - 8 * f * big
+    halo = gfx.glow(int(rad * 1.9), col, int(50 + 50 * pulse))
+    surface.blit(halo, halo.get_rect(center=(x, by)), special_flags=pygame.BLEND_RGB_ADD)
+    ball = gfx.sphere(rad, (74, 80, 98), bounce=col, shine=1.0)
+    ball = pygame.transform.smoothscale(ball, (max(4, int(rad * 2 + 2)), max(4, int(rad * 2 + 2))))
+    surface.blit(ball, ball.get_rect(center=(x, by)))
+    ring_r = (62 - 40 * f) * big                                                              # ring closing in on him
+    pygame.draw.ellipse(surface, col, (x - ring_r, y + 4 - ring_r * 0.45, ring_r * 2, ring_r * 0.9), 2 if f < 0.8 else 3)
+    random.seed(int(t.pos.x * 7 + t.pos.y))                                                    # stable crack pattern per tower
+    for i in range(7):                                                                         # cracks spreading from the pedestal
+        a = i / 7 * math.tau + 0.3
+        ln = (16 + 34 * f) * big * random.uniform(0.7, 1.0)
+        p0 = (x + math.cos(a) * 20, y + 8 + math.sin(a) * 8)
+        p1 = (x + math.cos(a) * (20 + ln), y + 8 + math.sin(a) * (8 + ln * 0.4))
+        pygame.draw.line(surface, (60, 40, 30), p0, p1, 2)
+        pygame.draw.line(surface, col, p0, p1, 1)
+    random.seed()
+    if f > 0.85:                                                                               # about to release: white-hot flash
+        w = gfx.glow(int(14 * big), (255, 255, 255), int(70 * (f - 0.85) / 0.15))
+        surface.blit(w, w.get_rect(center=(x, by)), special_flags=pygame.BLEND_RGB_ADD)
+
+
+def draw_barrage(surface: pygame.Surface, t: "Tower", x: int, y: int) -> None:
+    """Tusk Act 4's fists: a flurry of ghost fists around the stand while the barrage hits something."""
+    if t.barraging <= 0:
+        return
+    k = pygame.time.get_ticks()
+    sx, sy = x + 36, y - 40
+    for i in range(7):
+        a = (k / 40 + i * 0.9) % math.tau
+        px = sx + math.cos(a) * 22 + math.sin(k / 23 + i) * 6
+        py = sy + math.sin(a * 1.3) * 14
+        g = gfx.glow(9, GOLD if i % 2 else (255, 255, 255), 160)
+        surface.blit(g, g.get_rect(center=(int(px), int(py))), special_flags=pygame.BLEND_RGB_ADD)
+
+
+def draw_world(surface: pygame.Surface, game: "Game") -> None:
+    """The inner circle of a Tusk Act 4 Fadhli: the range of the melee barrage (brighter while it is hitting)."""
+    t0 = pygame.time.get_ticks() / 1000
+    for t in game.towers:
+        if t.kind != "fadhli" or not has_barrage(t):
+            continue
+        r = int(melee_radius(t))
+        x, y = int(t.pos.x), int(t.pos.y)
+        selected = t is game.selected
+        alpha = 38 + (30 if t.barraging > 0 else 0) + (24 if selected else 0)
+        disc = pygame.Surface((2 * r + 4, 2 * r + 4), pygame.SRCALPHA)
+        pygame.draw.circle(disc, (*GOLD, alpha), (r + 2, r + 2), r)
+        for i in range(24):                                                                   # dashed rotating rim
+            a0 = t0 * 0.6 + i / 24 * math.tau
+            pygame.draw.arc(disc, (*GOLD, 230 if selected or t.barraging > 0 else 130), (2, 2, 2 * r, 2 * r), a0, a0 + 0.17, 3)
+        surface.blit(disc, (x - r - 2, y - r - 2))
+        if selected:
+            draw_outlined(surface, "BARRAGE", (x, y + r + 12), 15, GOLD, center=True, width=1)

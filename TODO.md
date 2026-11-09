@@ -1,43 +1,41 @@
-# TODO — remaining work only
+# TODO — ideas that are NOT in scope yet (CLAUDE.md rule 1: ask before building)
 
-Keep this file limited to work that is not already implemented. Check `CLAUDE.md` and the code before adding an item. Move completed items to `CHANGELOG.md` or remove them; do not keep historical status notes here.
+## Cool and cheap
+- **Next-wave preview** on the HUD (enemy types and counts). Helps decide how long to prep vs the escalation timer.
+- **First-run tutorial overlay**: prep phase, Larping, activities, the (4,1) upgrade rule. A playtest showed players miss that Jalu upgrades need knowledge.
+- **Upgrade tooltips** on hover with the full description and the resulting stats.
+- **Win/lose stats screen**: kills, money earned, time, towers built, best wave.
+- **Particle/quality setting** (low/high) for weak laptops; volume sliders (SFX) and a small settings overlay.
+- **Range ring on hover** over a tower or shop button before clicking.
+- **Wave progress bar** (enemies left / spawned) during battle.
 
-## Gameplay and usability
+## Bigger
+- **Music**: a loop for prep and a more intense one for battle (CC0 file or generated); separate music volume.
+- **Targeting priority** (first / last / strong / close) — explicitly out of scope in CLAUDE.md, but very BTD6.
+- **Sell-all / undo placement** within a few seconds.
+- **Per-activity visuals** on the tower while Larping/Slothing/Praying (thought bubble, aura) instead of just the gold dot.
+- **Difficulty presets** (prep time and enemy ramp) — out of scope per CLAUDE.md (no difficulty modes).
+- **Bestiary / codex** page for Didit variants and tower lore.
+- **Gamepad** input. (Touch: done, see MOBILE.md.)
 
-- [ ] Next-wave preview showing upcoming enemy types/counts and the preparation escalation risk.
-- [ ] First-run tutorial explaining preparation, activities, Jalu's ball-knowledge requirement, and crosspath restrictions.
-- [ ] Win/lose summary with kills, money earned, time, towers built, and highest wave.
-- [ ] Wave progress indicator showing spawned and remaining enemies during battle.
-- [ ] Sell-all or short-window undo for accidental placement/selling, if scope allows.
-- [ ] Gamepad support.
-- [ ] Music for preparation and battle, with a separate music-volume setting.
-- [ ] Bestiary/codex for Didit variants and character lore.
+## Dev tooling
+- Turn `tools/balance_bot.py` into a small CLI that sweeps prep times / builds and prints a table, run after every balance change.
+- Replace the placeholder `<plh>` lines in `data/dialogue.py` (Day 12 speech bubbles) — needs the author's jokes.
+- Check with Jalu / Romli / Zizi that they are okay with their portrayal (CLAUDE.md tone note).
 
-## Visual and audio polish still worth checking
-
-- [ ] Mark's punch should visibly use the fist prop instead of relying only on ring/pop feedback.
-- [ ] Give Loki magic bolts their own cast sound and green muzzle/impact feedback rather than reusing the base Jalu throw feedback.
-- [ ] Give the rolled-poster projectile a paper-rip/poof impact treatment.
-- [ ] Connect the Temporal Loom prop to Loom Reset with a visible thread/clock effect.
-- [ ] Make Speed Against Time normalization visually and audibly distinct.
-- [ ] Connect Zizi's pillow prop and Nap Time effect to a stronger sleep visual; the current Zzz feedback may be too subtle.
-- [ ] Give Zizi's Recitation aura a visible radius indicator and, if appropriate, a quiet looping sound.
-- [ ] Add distinct sound/animation feedback to Romli's random-event outcomes and business/programmer tiers.
-- [ ] Give Romli's armor-breaker hits a distinct visual treatment.
-- [ ] Add typing/invalid-formula feedback for Bima Graph if playtesting shows the current feedback is insufficient.
-- [ ] Give boss and miniboss variants distinct entrance cues where useful.
-
-## Character and content work
-
-- [ ] Fadhli look: he still uses the default tower body and colors. Add a petanque-athlete outfit per path/tier and a held prop in `game/models.py`; ask the person he represents what he looks like first.
-- [ ] Fadhli sounds: `shoot_fadhli` does not exist, so his throws are silent; add throw, impact, crater, Meteor, and Gyro sounds in `game/audio.py`.
-- [ ] Spinned visual: the tornado is three wobbling ribbons drawn over the normal Didit. The design asks for three distinct tornado poses/models that make the enemy look like a tornado.
-- [ ] Add Fadhli to `tools/balance_bot.py` and run a balance pass (his numbers are untested).
-- [ ] Run `tests/test_fadhli.py` and the full suite on a machine with pygame; the Fadhli fixes and tests have only been compile-checked.
-- [ ] Replace Jalu's `<plh>` dialogue placeholders in `data/dialogue.py` with approved lines.
-- [ ] Review character portrayals with the people represented before adding more personal jokes or dialogue.
-
-## Balance and developer tooling
-
-- [ ] Expand `tools/balance_bot.py` into a CLI that can sweep preparation times/builds and print comparable results.
-- [ ] Recheck balance after each new tower, major upgrade, or wave-scaling change.
+## VFX / SFX found unfinished or mismatched (2026-10-28, listed only, NOT built: models-only task)
+- **Mark's punch** has no visible fist: `models.prop("fist", size)` now exists (points right) but `fx.mark_punch` only draws a ring/pop. Use it as a quick fly-in at the target.
+- **Loki (Jalu B) magic bolts** (T2+) reuse `shoot_jalu` (the prop-sword throw sound) and the generic muzzle pop. Needs its own cast sound and a green muzzle/impact colour (the bolt model is green, the hit effects still use Jalu's blue).
+- **Jalu base projectile** is now a tumbling rolled poster; the impact is still the generic spark. A paper-rip or "poof" would fit.
+- **Temporal Loom** prop (`models.prop("loom")`) floats next to Loki at T3+, but `loom_reset` fx does not use it (no ring of threads / clock flash from the prop).
+- **Speed Against Time** (Jalu B T3): no visual or sound when a fast Didit is normalised (`fx.normalized` exists; check it has a distinct look).
+- **Zizi Nap Time** (`fx.nap_time`) and the Sloth pillow prop (`models.prop("pillow")`, shown at Sloth T4) are not connected; "Zzz" text is the only sleep visual.
+- **Zizi Recitation aura** (the +attack-speed aura, T2-T4): `fx.aura` gives generic gold sparkles only; no ring showing the buff radius, no looping recitation sound.
+- **Romli random events** (Programmer T3/T4): JACKPOT / OVERCLOCK / BUG have comic text and a burst but **no sound**; no screen-on-the-tower animation (the code screens are static).
+- **Romli Farm/Business path**: no VFX or SFX tied to the tier look (suit/crown); the T3 upgrade-discount aura has no visual radius.
+- **Romli armor_breaker** (Programmer T2): no distinct hit effect on armored Didits (`armor_hit` is generic).
+- **Bima Graph T4 hologram wave** (companion model) is purely decorative; Bima's formula fire has a sound (`graph_fire`) but no sound for typing/invalid formula.
+- **Fusion tower** (Jalu + Romli): model exists (`kind "fused_jalu_romli"`) but the feature, its sounds and its fuse VFX do not.
+- **Boss Didit / Speedster / Trojan** entrance: `boss` sound only; no per-enemy intro sound (Speedster decel whoosh, Rich Didit jingle).
+- **Music**: none (already listed above).
+- **Jalu speech bubbles** + `data/dialogue.py` are all `<plh>` placeholders (already listed above).

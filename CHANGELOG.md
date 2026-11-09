@@ -1,19 +1,37 @@
 # Changelog
 
-## 2026-11-05: Fadhli + large damage numbers (reconstructed from the code, NOT run: no pygame in the session) and cleanup pass
-- **Fadhli** (petanque athlete, cost 350, key 5): Power path (Power throw, Sky shot, Hot crater, Meteor boule with the Meteor! active) and Accuracy path (Quick release, Triple bank, SPINNING SPINNING, Arigatou, Gyro with the Gyro active). Numbers in `data/fadhli.py`, logic in the new `game/fadhli.py`. Boule projectile model (steel on Accuracy tier 3+), original doodle stand gag, tornado ribbons for Spinned enemies.
-- **Large damage numbers:** `DAMAGE_STAGES` (`data/settings.py`) picks a font size and color for big hits in `Game.hit_enemy`; routine hits show nothing.
-- **Fixes to Fadhli:**
-  - Crater damage went through `hit_enemy` every frame: armor was stripped in a fraction of a second and hit sparks/sounds spammed. Craters now hit every `CRATER_TICK` (0.5s) for DPS x tick.
-  - Power T4 range 10175 made the range ring allocate a ~20000x20000 px surface when he was selected (about 1.6 GB). Infinite range now draws no ring and the stat line says "infinite".
-  - A Meteor shot whose target died in flight used up an empowered charge and made no crater; it is now refunded.
-  - Triple bank could jump to any enemy on the map; jumps are now limited to `BOUNCE_RADIUS` (140 px) from the last enemy hit, chain from enemy to enemy, and never hit the same enemy twice.
-  - Bounce hits skipped the 20/30/50 steel-ball roll and, during Gyro, gave bosses the full Spinned look; all hits now use the same status code (bosses keep the short look and are never stunned).
-  - Fadhli had no hotkey; `5` selects him.
-  - Meteor shots left and Gyro time left are now shown above the tower (pips / bar).
-  - Magic numbers moved to `data/fadhli.py` (cooldowns, 5s duration, x3.5, arc height; `POWER_COOLDOWN`, `GYRO_COOLDOWN`, `GYRO_DURATION` existed but were unused).
-- Tests: `tests/test_fadhli.py` (odds, bounce, crater ticks and armor, infinite range, three Meteor shots and refund, Golden Ratio ramp/reset, Spinned bosses, damage-number stages).
-- **Cleanup:** removed `hello.py` (empty), `game/audio-pygbag.py` (unused copy with Thor sounds and without Mark sounds; not importable because of the hyphen) and the empty `lib/` virtualenv skeleton; `.gitignore` started and ended with a pasted shell heredoc (`cat > .gitignore << 'EOF'` ... `EOF`), now removed. README, `CLAUDE.md`, `TODO.md`, and the sprites README no longer say Fadhli is unimplemented.
+## 2026-11-08 (later) - Fadhli, the thrower (new tower, 5th in the shop, key 5)
+- **Fadhli** ($300) throws heavy objects SLOWLY. Every throw has a CHARGE (wind-up) first; charge + cooldown = his attack cycle. One path per unit (like Jalu). Code `game/fadhli.py`, ALL numbers `data/fadhli.py`, upgrades/prices `data/towers.py`. Upgrade and move names are placeholders (rename in `data/towers.py`).
+- **Path A - Garp (power):** looks like Garp's white marine coat draped over the shoulders (clothes only), iron gauntlets at T2, gold trim T3, epaulettes T4. Cannonball lobbed in an arc. Charge grows each tier (0.45 -> 0.95 s): heat glow, particles pulled in, ground cracks, he shakes, a ball swells above his head, rising rumble. Release: shockwave rings, rubble, screen shake, deep boom. T2 splash, T3 armor break + knockback, T4 active **Galaxy Impact** (next throw: x5 damage, bigger splash, 1.7x charge, huge shake/flash).
+- **Path B - Johnny (spin):** feathered hat, wide-collar jacket, spiral belt (costume is approximate, from memory). T1 only faster (cheap, $90). T2 **Tusk Act 1** + bouncing steel ball (50% to continue, -5 points per bounce: 50/45/40...). T3 **Tusk Act 3** + every hit rolls 20% stun / 30% slow / 50% nothing. T4 **Tusk Act 4** + barrage melee at the same time as the throws (inner circle = melee range, brighter while hitting) + active **Golden Ratio**. Every hit spins the Didit in a **tornado** (new `vfx.tornado`, wind sound).
+- **Golden Ratio:** damage /4, then x1.618 after every throw, 5 s. NOTE: read literally it was weaker than normal throws (~4.1x vs ~5.2x D in 5 s at his normal speed), so it also gives x2 attack speed (`GOLDEN_ATTACK_SPEED`; set 1.0 for the literal rule). Result at T4: ~9 throws, ~30x D total.
+- New: `vfx.tornado / vfx.suck`, 14 sounds in `audio.py` (`swell / swell_noise / wind / soft` helpers), icons `meteor` and `spiral`, `models.tusk(act, size)`, shop bar now fits 5 towers (narrower cards when there are more than 4).
+- Test: `tests/test_fadhli.py` (charge cycle, path lock, bounce chain, 20/30/50 rolls, barrage inside/outside the circle, Golden Ratio sequence, Galaxy, tornado, every tier runs + draws).
+
+## 2026-11-08 - speed rule, DiditCode no longer pauses, Romli + Bima buffs, Graph VFX
+- **Speed:** x2 / x3 now only speed up BATTLES. Preparation always runs at x1 (prep timer, Jalu's larping, Zizi's stacks, Romli income). New option "x2 / x3 also speeds prep" (`prep_speed`, default OFF) restores the old behaviour. Pressing x2 / x3 during prep shows a hint.
+- **DiditCode:** the game keeps running while it is open (no pause). It is a side panel (right half, above the bottom bar): clicks on the panel go to the puzzle, everything else goes to the game; MIN (-) folds it into a tab; starting a wave closes it (no reward). Reward raised: $150 + $20 per wave number (was $80 + $8).
+- **Romli buffed** (analysis: base Romli paid back in ~10 waves, Programmer t4 only ~6 dps for $2450). Business: income per wave 35 / 75 / 125 / 265 / 665 (was 25 / 50 / 85 / 185 / 485), per second up to 5.0 (was 3.5). Programmer: more damage per tier, Better code -0.4s, Stronger events +4 damage (t4 ~9.4 dps, was 6.1).
+- **Bima buffed.** Graph: damage per curve target x6 / x7 / x8 (was x3 / x3 / x3.5), Graph tiers give +1 / +1 / +1.5 damage, more Brain Energy and regen, cheaper curves (cost per unit 1.0 / 0.9 / 0.8), and a curve hit breaks 5 armor (was 1). Full-curve best case at tier 2 / 3 / 4: about 60 / 150 / 300 damage per cast (was 25 / 46 / 94). Geometry: +1 / +1 / +2 damage, collision x3 / x4 D (was x1.5 / x2), cap x14.
+- **Graph VFX:** bold outlined curve (readable on grass), sparkles, bright head with sparks, muzzle burst + rings + screen kick, per-hit rings, sparks, big damage numbers (bigger = stronger hit), chain lightning between hit Didits, hit-stop kick on the first hit, combo banner (COMBO / f(x)! / QED! / SIGMA!) with the total damage. See `fx.graph_fire / graph_trail / graph_hit / graph_done`, `curves.CurveShot.draw`.
+- Test: `tests/test_speed_balance_graph.py` (tests/test_bima.py and others follow the data).
+
+## 2026-11-07 - Didit Rupiah, Didit Wallstreet, DiditCode, dark Didits
+- **Enemy look:** every enemy Didit is now black / dark purple with glowing red eyes (`data/enemies.py` colors, dark-fur branch in `game/sprites_proc.py`, `is_dark`). Trojans stay bare wood. The ORIGINAL white Didit sits at the side of the Snack Stash (`game/scenery.py`, `_original_didit`).
+- **Didit Rupiah (DR, green):** the meta currency was renamed from Snack Coins. It is drawn as a green paper banknote with the white Didit on it (`game/currency.py`, `note(width)`), used in the menu pill, shop prices, Wallstreet and the end screen. The profile attribute is still `coins`.
+- **Didit Wallstreet (main menu, new WALLSTREET button):** `game/menu.py` (`WallstreetScreen`), logic `game/market.py`, data `data/market.py`. Stocks: IHSD (Indeks Harga Saham Didit), ROC (Romli Corp.), IUKXJ (Indeks Uang Kas X-J). A Hacker-News-style page shows only headlines for the NEXT move; each headline has a hidden size and a source domain that sets how often it is right. The market moves once per finished run (`Profile.record_run`). IUKXJ is not random: price = integer in `kas.txt` (project root, now `1500000`) / `KAS_DIVISOR`; edit that file when the real class cash changes (the screen re-reads it when opened). Trading: BUY 1 / BUY 10 / SELL 1 / SELL ALL, 1% sell fee, max 500 shares per stock. Holdings, cost basis and the market are stored in `profile.json`.
+- **DiditCode (in-match, Romli's ability):** `game/diditcode.py`, puzzles in `data/diditcode.py` (Python, Go, C++, SQL). Every Romli has the ability (first slot, key E), preparation phase only: click the buggy line, then pick the right fix; 2 strikes. A solved snippet pays $ (`DIDITCODE_*` in `data/settings.py`). The overlay is modal (the game does not advance), 40 s cooldown per Romli, max 2 attempts per preparation; cancelling before clicking anything is free. Only DiditCode is playable in a match; Wallstreet is menu-only.
+- Test: `tests/test_wallstreet_diditcode.py`.
+
+## 2026-11-06 - main menu, UNITS, SHOP, Snack Coins
+- **Main menu (BTD6-style):** round buttons UNITS / SHOP / PLAY / DEVELOPERS / EXIT, CONTINUE button when a save exists, fullscreen button top-left, Snack Coins top-right. Code: `game/menu.py` (`MainMenu`, `UnitsScreen`, `ShopScreen`, `DevelopersScreen`), flow in `main.py` (`_menu` -> `_load` once -> `_play` -> back to the menu). The old `TitleMenu` is gone; the loading scene's track moved up (`title.TRACK`).
+- **Snack Coins:** paid when a run ends (win or lose): `COINS_PER_WAVE` per wave cleared in that run + `COINS_WIN_BONUS` for a win (`data/settings.py`). A CONTINUEd run only pays for the waves it played. Quitting to the menu pays nothing. Stored in the profile (`game/profile.py`: `profile.json`, or localStorage in the browser), separate from the autosave.
+- **UNITS:** portrait (hover/click a tier to see its costume), short description, base stats and both upgrade paths with prices. Names/prices/descriptions come from `data/towers.py`; blurbs in `data/units_info.py`.
+- **SHOP (A'yun):** `data/shop.py`. PERMANENT (leveled): Bigger Allowance, Sturdy Crate, Friendly Discount, Lucky Wallet, Sharp Tools, Haggler's Gloves, Study Notes, Coin Booster. IN-GAME (one use, per-run limits): Cash Drop, Stash Patch, Freeze Bomb, Espresso Shot, Ball Knowledge Scroll, Insta-Jalu. Perk hooks are in `game/game.py` (`reset`, `upgrade_cost`, `damage_multiplier`, `spawn_enemy`, `sell_refund`, `_end_run`); item effects in `game/powers.py`; art in `game/shopkeeper.py` and `game/shop_icons.py`.
+- **In game:** POWERS button above the bottom bar (opens the item list); options panel got a MENU button; the win/lose screen shows the coins earned with PLAY AGAIN / MAIN MENU buttons (mouse and touch).
+- `Game(screen, profile=None)`: no profile = a blank, never-saved one, so tests are not affected by a real `profile.json`.
+- DEVELOPERS is empty on purpose.
+- Test: `tests/test_menu_shop.py`.
 
 ## 2026-11-02 - feedback pass
 - **Look:** Romli: short messy hair (was wavy), now holds a stack of cash (base / Farm-Business path) or a laptop (Programmer path) instead of the fly swatter. Zizi: short hair, no beanie, no long back hair; she holds a book (Recitation path) or a pillow (Sloth path), the prayer beads stay for the base tower.
@@ -102,9 +120,3 @@
 - QoL: pause, hotkeys, sell confirmation, tower stats line, hotkey labels on buttons, hotkey hints.
 - Upgrade price now goes through `Game.upgrade_cost` (discounts); sell value counts the price actually paid.
 - Tests run headless: all effects, unlocks, QoL, and 6 random-bot fuzz runs without errors.
-
-## 2026-11-05 - documentation cleanup and Fadhli design
-- Reworked `CLAUDE.md` to describe the current four-tower, 30-wave project instead of the obsolete two-week / 10-wave prototype plan.
-- Clarified implemented systems and tower-specific path restrictions; added the rule that every upgrade must improve at least one gameplay stat.
-- Added Fadhli's Power and Accuracy path design and large-damage number feedback as planned work, not implemented gameplay.
-- Updated `README.md` and pruned completed/outdated entries from `TODO.md`.

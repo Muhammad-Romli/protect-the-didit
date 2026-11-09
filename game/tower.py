@@ -22,8 +22,11 @@ if TYPE_CHECKING:
 
 
 class Tower:
-    def __init__(self, kind: str, pos) -> None:
+    effects_version = 0   # bumped whenever any tower's effect list is reassigned (see the `effects` setter)
+
+    def __init__(self, kind: str, pos, refund: float = SELL_REFUND) -> None:
         self.kind = kind
+        self.refund = refund                 # share of the money spent that selling gives back (shop perk raises it)
         self.data = TOWERS[kind]
         self.name: str = self.data["name"]
         self.color = self.data["color"]
@@ -40,19 +43,18 @@ class Tower:
         self.activity_acc = 0.0              # progress toward the next activity tick
         self.stacks: dict[str, int] = {}     # activity stacks (laziness, blessing, ...)
         self.stats: dict[str, float] = {}
-        self.effects: list[str] = []
+        self.effects = []
         self.active_cd: dict[str, float] = {}   # ability id -> seconds until ready
         self.haste = (0.0, 0.0)                 # (seconds left, attack speed bonus) from random events
         self.fx_t = 0.0                         # ambient sparkle timer
         self.vanished = False                   # Mark's Sweep: hidden, not attacking
-        self.power_shots = 0
-        self.gyro_timer = 0.0
-        self.golden_damage = 0.0
         self.recompute_stats()
         if kind == "bima":
             bima.init_tower(self)
         elif kind == "jalu":
             mark.init_tower(self)
+        elif kind == "fadhli":
+            fadhli.init_tower(self)
 
     # ---------------------------------------------------------------- stats
     def recompute_stats(self) -> None:
@@ -72,8 +74,17 @@ class Tower:
         self.effects = effects
 
     @property
+    def effects(self) -> list[str]:
+        return self._effects
+
+    @effects.setter
+    def effects(self, value: list[str]) -> None:
+        self._effects = value
+        Tower.effects_version += 1   # Game.effect_values rebuilds its cache when this changes
+
+    @property
     def sell_value(self) -> int:
-        return int(self.spent * SELL_REFUND)
+        return int(self.spent * self.refund)
 
     # --------------------------------------------------------------- stacks
     def add_stack(self, name: str) -> bool:
@@ -101,7 +112,7 @@ class Tower:
     def is_path_locked(self, path: int) -> bool:
         """Jalu only: once this unit has bought ANY upgrade in one path, the other path is locked for it
         (no cross-pathing). Other towers keep the BTD6 rule in can_upgrade()."""
-        return self.kind == "jalu" and self.tiers[1 - path] > 0
+        return self.kind in ("jalu", "fadhli") and self.tiers[1 - path] > 0
 
     def can_upgrade(self, path: int) -> tuple[bool, str]:
         """Rule: max(a, b) <= 4 and min(a, b) <= 1 (Jalu: one path only, Bima: one path only).
@@ -109,7 +120,7 @@ class Tower:
         if self.tiers[path] >= MAX_TIER:
             return False, "Max tier"
         if self.is_path_locked(path):
-            return False, f"Locked: this Jalu follows path {'AB'[1 - path]}"
+            return False, f"Locked: this {self.name} follows path {'AB'[1 - path]}"
         new = list(self.tiers)
         new[path] += 1
         if min(new) > (0 if self.kind == "bima" else MAX_OFF_PATH_TIER):  # Bima: ONE path only
@@ -159,8 +170,6 @@ class Tower:
         self.kick = max(0.0, self.kick - dt)
         for aid in list(self.active_cd):
             self.active_cd[aid] = max(0.0, self.active_cd[aid] - dt)
-        if self.kind == "fadhli":
-            fadhli.tick(self, dt)
         if self.haste[0] > 0:
             self.haste = (self.haste[0] - dt, self.haste[1])
         for name in self.effects:  # per-frame effect hooks (e.g. Romli's random events)
@@ -180,6 +189,9 @@ class Tower:
             rate += self.haste[1]
         if self.kind == "bima" and self.buff_timer > 0:
             rate += 0.6
+        if self.kind == "fadhli":  # charge -> throw -> cooldown, barrage, ability timers (game/fadhli.py)
+            fadhli.tick_tower(self, game, dt, rate)
+            return
         self.cooldown_left = max(0.0, self.cooldown_left - dt * rate)
         if self.cooldown_left > 0 or self.vanished:  # Mark does not attack while he is away (Sweep)
             return
@@ -193,15 +205,10 @@ class Tower:
             self.kick = 0.1
             self.aim = (target.pos - self.pos).normalize() if target.pos != self.pos else self.aim
             return
-        damage, empowered = s["damage"], False
-        if self.kind == "fadhli":
-            damage, empowered = fadhli.next_shot(self)
-        proj = Projectile(self.pos, target, s["proj_speed"], damage, s["aoe_radius"],
+        proj = Projectile(self.pos, target, s["proj_speed"], s["damage"], s["aoe_radius"],
                           s["slow"], s["slow_duration"], s["money_per_hit"], self.color, self)
         if self.kind == "bima":
             bima.prepare_projectile(self, game, target, proj)
-        if self.kind == "fadhli":
-            fadhli.prepare_projectile(self, proj, empowered)
         game.projectiles.append(proj)
         self.cooldown_left = s["cooldown"]
         self.kick = 0.1
@@ -236,14 +243,16 @@ class Tower:
         recoil = self.kick / 0.1
         weapon_first = self.aim.y < 0  # aiming up: wand goes behind the body
         melee = mark.is_mark(self)  # Mark punches: no wand
-        if not custom and weapon_first and not melee:
+        hold = self.kind == "fadhli" and self.charging and not fadhli.is_johnny(self)  # charging Garp holds the ball overhead
+        shx, shy = fadhli.charge_shake(self) if self.kind == "fadhli" else (0, 0)
+        if not custom and weapon_first and not melee and not hold:
             self._draw_wand(surface, x, y, recoil)
         if custom:
             surface.blit(img, img.get_rect(center=(x, y)))
         else:
             ox, oy = sprites_proc.tower_origin(TOWER_RADIUS)
-            surface.blit(img, (x - ox, y - oy - round(2 * recoil)))  # tiny hop when firing
-        if not custom and not weapon_first and not melee:
+            surface.blit(img, (x - ox + shx, y - oy - round(2 * recoil) + shy))  # tiny hop when firing
+        if not custom and not weapon_first and not melee and not hold:
             self._draw_wand(surface, x, y, recoil)
         if melee:
             mark.draw_rage(surface, self, x, y)
@@ -265,9 +274,8 @@ class Tower:
             pygame.draw.circle(surface, (255, 246, 190), (x + 18, y - 42), 3)
         models.draw_companion(surface, self.kind, models.look_of(self.kind, self.tiers), x, y, pygame.time.get_ticks() / 1000)
         if self.kind == "fadhli":
-            if self.tiers[1] >= 3:
-                fadhli.draw_stand_gag(surface, self, x, y)
-            fadhli.draw_state(surface, self, x, y)
+            fadhli.draw_charge(surface, self, x, y)
+            fadhli.draw_barrage(surface, self, x, y)
         self._draw_tier_badge(surface, x, y)
 
     def _draw_wand(self, surface: pygame.Surface, x: int, y: int, recoil: float) -> None:

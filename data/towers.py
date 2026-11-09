@@ -17,6 +17,7 @@ DEFAULT_STATS = {
 }
 
 from data.mark import TIER_STATS as MARK_STATS
+from data.fadhli import GARP_STATS, JOHNNY_STATS
 
 TOWER_ORDER = ["jalu", "romli", "zizi", "bima", "fadhli"]
 
@@ -27,24 +28,6 @@ def _up(name, cost, description, stat_mods=None, effects=None, voice_line=None):
 
 
 TOWERS = {
-    "fadhli": {
-        "name": "Fadhli", "color": (205, 190, 150), "cost": 350,
-        "stats": {"damage": 3, "cooldown": 1.15, "range": 175, "proj_speed": 520},
-        "paths": [
-            {"name": "Power", "tiers": [
-                _up("Power throw", 180, "A heavier boule deals more damage.", {"damage": 2}),
-                _up("Sky shot", 380, "High arcing shot; slower, much stronger and reaches far.", {"damage": 7, "cooldown": 0.9, "range": 180}, ["fadhli_sky"]),
-                _up("Hot crater", 650, "Impacts leave a burning crater that damages enemies over time.", {"damage": 4}, ["fadhli_crater"]),
-                _up("Meteor boule", 1400, "Permanent infinite range. Activate to empower the next three shots and their craters.", {"damage": 8, "range": 10000}, ["fadhli_power_active"]),
-            ]},
-            {"name": "Accuracy", "tiers": [
-                _up("Quick release", 180, "Faster throws.", {"damage": 0.5, "cooldown": -0.25}),
-                _up("Triple bank", 380, "Bounce between three enemies; faster attacks.", {"damage": 1, "cooldown": -0.2}, ["fadhli_bounce"]),
-                _up("SPINNING SPINNING", 650, "Steel boule: 20% short stun, 30% slow, 50% no effect. Original doodle stand gag.", {"damage": 2, "cooldown": -0.1}, ["fadhli_spin"]),
-                _up("Arigatou, Gyro", 1400, "Passive damage and speed. Activate 5s of spinning tornadoes and Golden Ratio shots.", {"damage": 2, "cooldown": -0.1}, ["fadhli_gyro_active"]),
-            ]},
-        ],
-    },
     # Bima the Mathematician: path A = Graph (formula curves), path B = Geometry (shape stacks).
     # Only ONE path can be used (Tower.can_upgrade). Numbers: data/bima.py, logic: game/bima.py.
     "bima": {
@@ -53,23 +36,52 @@ TOWERS = {
         "paths": [
             {"name": "Graph", "tiers": [
                 _up("Math gets easier", 150, "Graphs click: more damage and attack speed.",
-                    {"damage": 0.5, "cooldown": -0.1}),
+                    {"damage": 1.0, "cooldown": -0.1}),
                 _up("Cartesian plane", 350, "Axis with Bima at (0,0). Type formulas to fire curves (Brain Energy).",
                     {}, ["graph_axis"]),
                 _up("Pattern book", 600, "Preset formulas with adjustable parameters. Typing still works.",
-                    {"damage": 0.5}, ["graph_patterns"]),
-                _up("Calculus", 1300, "Unlocks sin, cos, tan, ln, exp. Longer, cheaper curves.",
-                    {"damage": 1}, ["graph_advanced"]),
+                    {"damage": 1.0}, ["graph_patterns"]),
+                _up("Calculus", 1300, "Unlocks sin, cos, tan, ln, exp. Longer, cheaper curves, huge damage.",
+                    {"damage": 1.5}, ["graph_advanced"]),
             ]},
             {"name": "Geometry", "tiers": [
                 _up("Shapes", 150, "Shots become squares, triangles, circles. More damage.",
-                    {"damage": 0.5}, ["geo_shapes"]),
+                    {"damage": 1.0}, ["geo_shapes"]),
                 _up("Shape effects", 350, "Square: +25% dmg taken. Triangle: x1.5. Circle: slow. All 3 = collision!",
                     {}, ["geo_effects"]),
                 _up("Solid geometry", 600, "Cube, pyramid, sphere: stronger effects and collision.",
-                    {"damage": 0.5}, ["geo_3d"]),
+                    {"damage": 1.0}, ["geo_3d"]),
                 _up("Euclid's mastery", 1300, "Actives: Cube wall, Pyramid buff, Sphere shield + trap.",
-                    {"damage": 1}, ["cube_active", "pyramid_active", "sphere_active"]),
+                    {"damage": 2}, ["cube_active", "pyramid_active", "sphere_active"]),
+            ]},
+        ],
+    },
+    # ---------------------------------------------------------------- Fadhli
+    # Thrower with a charge-up before every throw. Each unit follows ONE path (Tower.can_upgrade, like Jalu).
+    # Path A = Garp (heavy cannonballs), path B = Johnny + Tusk (steel balls). Numbers: data/fadhli.py, logic: game/fadhli.py.
+    "fadhli": {
+        "name": "Fadhli", "color": (120, 150, 200), "cost": 300,
+        "stats": {"damage": 5.5, "cooldown": 1.8, "range": 150, "proj_speed": 320},
+        "paths": [
+            {"name": "Garp (Power)", "tiers": [
+                _up("Marine coat", 150, "Wears Garp's coat. Heavier throws and a bit more range.",
+                    GARP_STATS[0]),
+                _up("Iron Fist", 320, "Cannonball throws hit a small area. Much more damage, slower attack, longer charge.",
+                    GARP_STATS[1]),
+                _up("Fist of Love", 560, "Huge damage and a bigger blast. Breaks armor and knocks Didits back (bosses barely).",
+                    GARP_STATS[2], ["armor_breaker", "garp_knockback"]),
+                _up("Galaxy Impact", 1200, "Massive damage. Active: the next throw is a giant, long-charged mega throw.",
+                    GARP_STATS[3], ["galaxy_active"]),
+            ]},
+            {"name": "Johnny (Spin)", "tiers": [
+                _up("Spin practice", 90, "Cheap: much faster throws of the steel ball. Hits spin Didits in a tornado.",
+                    JOHNNY_STATS[0]),
+                _up("Tusk Act 1", 300, "Steel balls BOUNCE: 50% to keep going (-5% per bounce). More damage.",
+                    JOHNNY_STATS[1], ["fadhli_bounce"]),
+                _up("Tusk Act 3", 550, "Every hit: 20% stun, 30% slow. Better damage, speed and range.",
+                    JOHNNY_STATS[2], ["fadhli_status"]),
+                _up("Tusk Act 4", 1200, "Barrage melee (inner circle) AND throws at once. Active: Golden Ratio (5s, throws faster, damage /4 then x1.618 per throw).",
+                    JOHNNY_STATS[3], ["fadhli_barrage", "golden_active"]),
             ]},
         ],
     },
@@ -106,26 +118,26 @@ TOWERS = {
     "romli": {
         "name": "Romli", "color": (80, 200, 120), "cost": 250,
         "stats": {"damage": 1, "cooldown": 1.2, "range": 130, "proj_speed": 380,
-                  "income_per_wave": 25},
+                  "income_per_wave": 35},
         "paths": [
             {"name": "Farm / Business", "tiers": [
-                _up("Side hustle", 130, "More income per wave.", {"income_per_wave": 25}),
+                _up("Side hustle", 130, "More income per wave.", {"income_per_wave": 40}),
                 _up("Small business", 300, "More income per wave, plus a little per second.",
-                    {"income_per_wave": 35, "income_per_sec": 0.5}),
+                    {"income_per_wave": 50, "income_per_sec": 0.8}),
                 _up("Company", 550, "Big income boost. Nearby towers: -5% upgrade cost.",
-                    {"income_per_wave": 100, "income_per_sec": 1.0}, ["upgrade_discount_aura"]),
+                    {"income_per_wave": 140, "income_per_sec": 1.5}, ["upgrade_discount_aura"]),
                 _up("Empire", 1200, "Huge income per wave + bonus on boss kill.",
-                    {"income_per_wave": 300, "income_per_sec": 2.0}, ["boss_kill_bonus"]),
+                    {"income_per_wave": 400, "income_per_sec": 2.7}, ["boss_kill_bonus"]),
             ]},
             {"name": "Programmer", "tiers": [
-                _up("Decoder", 130, "Attacks give a small money bonus per hit.",
-                    {"money_per_hit": 1}),
+                _up("Decoder", 130, "Attacks give a small money bonus per hit. A bit more damage.",
+                    {"money_per_hit": 1, "damage": 0.5}),
                 _up("Better code", 320, "Faster attacks, more money per hit. Breaks armor: 1 hit counts as 3.",
-                    {"cooldown": -0.3, "money_per_hit": 1, "damage": 0.5}, ["armor_breaker"]),
+                    {"cooldown": -0.4, "money_per_hit": 1, "damage": 0.5}, ["armor_breaker"]),
                 _up("Random event", 550, "Every 20s: +10% money / attack-speed boost / bug.",
-                    {"damage": 1, "money_per_hit": 1}, ["random_event"]),
-                _up("Stronger events", 1200, "Stronger event outcomes. Higher base damage.",
-                    {"damage": 3}, ["random_event_strong"]),
+                    {"damage": 1.5, "money_per_hit": 1}, ["random_event"]),
+                _up("Stronger events", 1200, "Stronger event outcomes. Much higher base damage.",
+                    {"damage": 4}, ["random_event_strong"]),
             ]},
         ],
     },

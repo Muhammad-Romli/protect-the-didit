@@ -56,6 +56,8 @@ def _text_surface(text: str, color: tuple, size: int, outline: int) -> pygame.Su
     """Text with a dark outline, cached."""
     key = (text, color, size, outline)
     if key not in _TEXT_CACHE:
+        if len(_TEXT_CACHE) > 900:
+            _TEXT_CACHE.clear()
         font = get_font(size)
         base = font.render(text, True, color)
         edge = font.render(text, True, (20, 16, 30))
@@ -89,6 +91,7 @@ class VFX:
         self.bolts: list[list] = []   # lightning: [points, life, max_life, color, width]
         self.flies: list[list] = []   # shapes flying to a point: [start, end, t, dur, sprite, spin]
         self.pops: list[list] = []    # additive glow flashes: [pos, radius, life, max_life, color]
+        self.tornados: list[list] = []  # spinning funnels: [pos, life, max_life, scale, color, phase]
         self.shake_time = 0.0
         self.shake_amp = 0.0
         self.flash_color = (255, 0, 0)
@@ -151,6 +154,23 @@ class VFX:
     def pop(self, pos, radius: float, color, life: float = 0.2) -> None:
         self.pops.append([Vec(pos), radius, life, life, color])
 
+    def tornado(self, pos, life: float = 0.7, scale: float = 1.0, color=(190, 230, 255)) -> None:
+        """A small whirlwind funnel on the ground at `pos` (Johnny's spin). At most 10 at once."""
+        if len(self.tornados) >= 10:
+            self.tornados.pop(0)
+        self.tornados.append([Vec(pos), life, life, scale, color, random.uniform(0, math.tau)])
+
+    def suck(self, pos, radius: float, color, n: int = 4, life: float = 0.3, size: float = 3) -> None:
+        """Charging: particles start on a ring around `pos` and rush into its centre."""
+        for _ in range(n):
+            if len(self.particles) >= self.max_particles:
+                return
+            a = random.uniform(0, math.tau)
+            r = radius * random.uniform(0.7, 1.1)
+            start = Vec(pos) + Vec(math.cos(a), math.sin(a) * 0.8) * r
+            vel = (Vec(pos) - start) / life
+            self.particles.append(Particle(start, vel, life, life, color, size * random.uniform(0.7, 1.3), 0))
+
     def shake(self, amp: float, seconds: float) -> None:
         if self.shake_enabled and (amp >= self.shake_amp or self.shake_time <= 0):
             self.shake_amp, self.shake_time = amp, seconds
@@ -186,6 +206,10 @@ class VFX:
         for pp in self.pops:
             pp[2] -= dt
         self.pops = [pp for pp in self.pops if pp[2] > 0]
+        for tn in self.tornados:
+            tn[1] -= dt
+            tn[5] += dt * 14
+        self.tornados = [tn for tn in self.tornados if tn[1] > 0]
         self.labels = [lb for lb in self.labels if lb.life > 0]
         self.shake_time = max(0.0, self.shake_time - dt)
         self.flash_time = max(0.0, self.flash_time - dt)
@@ -214,6 +238,8 @@ class VFX:
         for pos, radius, life, max_life, color in self.pops:  # additive glow flashes
             g = gfx.glow(int(radius * (0.6 + 0.6 * (1 - life / max_life))), color, int(255 * life / max_life))
             surface.blit(g, g.get_rect(center=(int(pos.x), int(pos.y))), special_flags=pygame.BLEND_RGB_ADD)
+        for tn in self.tornados:
+            self._draw_tornado(surface, tn)
         for pts, life, max_life, color, width in self.bolts:
             a = life / max_life
             col = tuple(int(c * a) for c in color)
@@ -228,6 +254,37 @@ class VFX:
             surface.blit(img, img.get_rect(center=(int(pos.x), int(pos.y))))
         for lb in self.labels:
             self._draw_label(surface, lb)
+
+    @staticmethod
+    def _draw_tornado(surface: pygame.Surface, tn: list) -> None:
+        """Funnel made of stacked spinning rings that widen towards the top, with orbiting debris specks."""
+        pos, life, max_life, scale, color, phase = tn
+        age = max_life - life
+        grow = min(1.0, age / 0.14) * min(1.0, life / 0.22)   # grows in fast, fades out
+        if grow <= 0:
+            return
+        h = int(84 * scale)
+        w = int(76 * scale)
+        tmp = pygame.Surface((w * 2, h + 24), pygame.SRCALPHA)
+        cx, base_y = w, h + 14
+        levels = 9
+        for i in range(levels):
+            k = i / (levels - 1)
+            ry = (3 + 5 * k) * scale
+            rx = (6 + 24 * k ** 0.9) * scale * grow
+            y = base_y - k * h * grow
+            ang = phase + i * 0.8
+            alpha = int(235 * grow * (1 - 0.35 * k))
+            box = pygame.Rect(0, 0, rx * 2, ry * 2)
+            box.center = (cx, y)
+            wdt = max(2, int(3.5 * scale))
+            pygame.draw.arc(tmp, (50, 90, 150, int(alpha * 0.8)), box.inflate(2, 2), ang, ang + 3.6, wdt + 2)   # dark underlay: readable on light grass
+            pygame.draw.arc(tmp, (*color, alpha), box, ang, ang + 3.6, wdt)
+            pygame.draw.arc(tmp, (255, 255, 255, int(alpha * 0.85)), box, ang + math.pi, ang + math.pi + 1.4, 2)
+            sx = cx + math.cos(ang * 1.3) * rx
+            sy = y + math.sin(ang * 1.3) * ry
+            pygame.draw.circle(tmp, (255, 255, 255, int(alpha * 0.9)), (int(sx), int(sy)), max(1, int(2 * scale)))
+        surface.blit(tmp, tmp.get_rect(midbottom=(int(pos.x), int(pos.y) + 12)))
 
     def _draw_label(self, surface: pygame.Surface, lb: Label) -> None:
         age = 1 - lb.life / lb.max_life

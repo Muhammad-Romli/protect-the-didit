@@ -16,6 +16,7 @@ import pygame
 from data.bima import GRAPH, UNIT
 from game.utils import Vec
 
+FADE = 0.7   # seconds the curve stays on screen (fading) after its head has arrived
 _SHOT_ID = [0]
 
 
@@ -157,29 +158,38 @@ class CurveShot:
             i += 1
         self.seg = max(0, i - 1)
         if self.s >= self.total:
-            self.fade = 0.3
+            self.fade = FADE
 
     def draw(self, surface: pygame.Surface, color=(255, 170, 70)) -> None:
+        """Big, readable curve: dark outline (visible on grass), orange body, yellow core, white hot centre,
+        travelling sparkles and a bright pulsing head. Fades out over FADE seconds after the head arrives."""
         if len(self.pts) < 2:
             return
-        n = 0
         upto = [self.pts[0]]
         for i in range(1, len(self.pts)):
             if self.cum[i] <= self.s:
                 upto.append(self.pts[i])
             else:
-                upto.append((self.head_pos().x, self.head_pos().y))
+                hp = self.head_pos()
+                upto.append((hp.x, hp.y))
                 break
         if len(upto) < 2:
             return
-        alpha = 1.0 if self.s < self.total else max(0.0, self.fade / 0.3)
-        for width, col in ((9, tuple(int(c * 0.35 * alpha) for c in color)), (5, tuple(int(c * 0.8 * alpha) for c in color)),
-                           (2, tuple(int(255 * alpha) for _ in range(3)))):
-            if width > 2:
-                s_ = pygame.Surface((0, 0))  # (placeholder to keep structure simple)
-            pygame.draw.lines(surface, col, False, upto, width)
+        alpha = 1.0 if self.s < self.total else max(0.0, self.fade / FADE)
+        pulse = 1 + int(1.5 * math.sin(pygame.time.get_ticks() / 70))
+        layers = ((16 + pulse, (34, 18, 12), 0.9), (11 + pulse, color, 0.9), (6, (255, 226, 130), 1.0), (2, (255, 255, 255), 1.0))
+        for width, col, k in layers:
+            c = tuple(int(v * alpha * k) for v in col) if col != (34, 18, 12) else tuple(int(v * alpha) for v in col)
+            pygame.draw.lines(surface, c, False, upto, width)
+        t = pygame.time.get_ticks() / 1000
+        for i in range(2, len(upto) - 1, 9):   # sparkles riding along the curve
+            if int(t * 14 + i) % 3 == 0:
+                x, y = upto[i]
+                pygame.draw.circle(surface, (255, 255, 255), (int(x), int(y)), 3 + int(2 * alpha))
         if self.s < self.total:
             hp = self.head_pos()
             from game import gfx
-            g = gfx.glow(20, color, 220)
-            surface.blit(g, g.get_rect(center=(int(hp.x), int(hp.y))), special_flags=pygame.BLEND_RGB_ADD)
+            for rad, a in ((30, 120), (16, 200)):
+                g = gfx.glow(rad, (255, 200, 90), a)
+                surface.blit(g, g.get_rect(center=(int(hp.x), int(hp.y))), special_flags=pygame.BLEND_RGB_ADD)
+            pygame.draw.circle(surface, (255, 255, 255), (int(hp.x), int(hp.y)), 7)

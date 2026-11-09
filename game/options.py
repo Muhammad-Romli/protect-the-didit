@@ -18,7 +18,8 @@ TARGET_LABELS = {"first": "First", "last": "Last", "strong": "Strong", "weak": "
 STORAGE_KEY = "protect_the_didit_options"  # browser localStorage key
 
 DEFAULTS = {"auto_start": False, "auto_delay": 3, "volume": 7, "shake": True, "comics": True,
-            "particles": "High", "vignette": True, "fps": False, "default_target": "first"}
+            "particles": "High", "vignette": True, "fps": False, "default_target": "first",
+            "prep_speed": False}
 
 # (key, label, kind, choices)
 ROWS = [
@@ -31,6 +32,7 @@ ROWS = [
     ("vignette", "Danger glow", "toggle", None),
     ("fps", "Show FPS", "toggle", None),
     ("default_target", "New towers target", "cycle", TARGET_MODES),
+    ("prep_speed", "x2 / x3 also speeds prep", "toggle", None),   # OFF: speed-up only affects battles
 ]
 
 

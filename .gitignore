@@ -1,3 +1,4 @@
+cat > .gitignore << 'EOF'
 # ---------- Virtual environment (venv lives in the project root) ----------
 /bin/
 /include/
@@ -31,6 +32,8 @@ htmlcov/
 
 # ---------- Local game state ----------
 savegame.json
+profile.json
+options.json
 *.log
 
 # ---------- Editors / OS ----------
@@ -67,3 +70,4 @@ GEMINI.md
 .roo/
 .copilot/
 .github/copilot-instructions.md
+EOF

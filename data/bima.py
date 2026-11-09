@@ -9,11 +9,11 @@ UNIT = 20            # pixels per world unit on the Cartesian axis
 
 GRAPH = {            # tier:        0     1     2     3     4
     "range_units":  [0,    0,    14,   16,   18],
-    "brain_max":    [0,    0,    80,   100,  120],
-    "regen":        [0,    0,    6,    7,    8],      # Brain Energy per second (preparation + battle)
+    "brain_max":    [0,    0,    90,   120,  150],
+    "regen":        [0,    0,    9,    11,   13],     # Brain Energy per second (preparation + battle)
     "cost_base":    [0,    0,    4,    4,    4],
-    "cost_per_unit": [0,   0,    1.3,  1.2,  1.0],    # per world unit of arc length
-    "dmg_mult":     [0,    0,    3.0,  3.0,  3.5],    # x D per target
+    "cost_per_unit": [0,   0,    1.0,  0.9,  0.8],    # per world unit of arc length
+    "dmg_mult":     [0,    0,    6.0,  7.0,  8.0],    # x D per target (a full curve is Bima's big hit; 2026-11-07: x2.3)
     "falloff":      [1,    1,    0.90, 0.92, 0.94],   # damage multiplier per target already hit
     "falloff_floor": 0.4,
     "max_targets":  [0,    0,    5,    8,    10],
@@ -22,6 +22,7 @@ GRAPH = {            # tier:        0     1     2     3     4
     "speed_px": 900,                                  # how fast the curve is drawn / travels
     "half_width": 4,                                  # curve thickness for hit tests (px)
     "miss_refund": 0.5,                               # fraction of the cost returned if nothing was hit
+    "armor_hits": 5,                                  # armor a curve hit breaks (a normal hit breaks 1)
     "max_points": 900, "px_step": 2.0, "max_depth": 4, "jump_px": 60,
 }
 
@@ -32,10 +33,10 @@ GEOMETRY = {         # tier:        0     1     2     3     4
     "triangle_mult": [1,   1,    1.5,  2.0,  2.0],    # triangle: damage multiplier
     "circle_slow":  [0,    0,    0.30, 0.45, 0.45],
     "circle_slow_dur": [0, 0,    1.5,  2.0,  2.0],
-    "collision_flat": [0,  0,    1.5,  2.0,  2.0],    # x D
+    "collision_flat": [0,  0,    3.0,  4.0,  4.0],    # x D
     "collision_pct": [0,   0,    0.05, 0.07, 0.07],   # x enemy max HP
     "collision_pct_cap": [0, 0,  4,    6,    6],      # x D, caps the percent part only
-    "collision_total_cap": 10,                        # x D, caps the whole collision
+    "collision_total_cap": 14,                        # x D, caps the whole collision
     "boss_pct_mult": 0.3,
     "collision_cd": 3.0, "collision_cd_boss": 5.0,    # per-enemy cooldown between collisions
     "windup": 0.10,                                   # seconds between trigger and damage (VFX converge)

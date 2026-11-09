@@ -18,26 +18,22 @@ from typing import TYPE_CHECKING
 import pygame
 
 from data.activities import ACTIVITIES, STACKS, activities_for
-from data.fadhli import INFINITE_RANGE
 from data.settings import (BAR_RECT, COLORS, INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, MAX_TIER, PREP_GRACE_SECONDS,
                            PREP_MAX_SECONDS, TOWER_RADIUS)
+from data.shop import ITEM_ORDER, ITEMS
 from data.touch import TOUCH_GEAR, TOUCH_SLOP
 from data.towers import DEFAULT_STATS, TOWER_ORDER, TOWERS
 from data.waves import SPECIAL_WAVES, WAVES
-from game import gfx, options as opts_mod, sprites_proc
-from game.actives import ACTIVES, actives_of
+from game import gfx, options as opts_mod, powers, shop_icons, sprites_proc
+from data.settings import DIDITCODE_MAX_PER_PREP
+from game.actives import ACTIVES, actives_of, phase_ok as actives_phase_ok
 from game.bima_ui import GraphConsole
-from game.utils import draw_outlined, outlined_text, wrap_text
+from game.utils import draw_outlined, draw_outlined_digits, outlined_text, wrap_text
 
 if TYPE_CHECKING:
     from game.game import Game
 
 KNOWLEDGE_COLOR = (130, 215, 255)
-
-
-def _range_text(value: float) -> str:
-    """Range for the stat lines; Fadhli's Power T4 has infinite range."""
-    return "infinite" if value >= INFINITE_RANGE else f"{value:g}"
 GAIN_COLOR = (140, 255, 150)
 SPEND_COLOR = (255, 130, 120)
 GOLD = COLORS["gold"]
@@ -56,9 +52,13 @@ class UI:
         self.upgrades_btn = pygame.Rect(18, 640, 214, 44)
         self.slot = pygame.Rect(18, 690, 214, 22)
         n = len(TOWER_ORDER)
-        x0 = 640 - (n * CARD_W + (n - 1) * 14) // 2
-        self.shop_btns = {k: pygame.Rect(x0 + i * (CARD_W + 14), 641, CARD_W, CARD_H)
+        cw, gap = (CARD_W, 14) if n <= 4 else (78, 9)   # 5+ towers: narrower cards so the bar clears the abilities and POWERS
+        x0 = 640 - (n * cw + (n - 1) * gap) // 2 if n <= 4 else 432
+        self.shop_btns = {k: pygame.Rect(x0 + i * (cw + gap), 641, cw, CARD_H)
                           for i, k in enumerate(TOWER_ORDER)}
+        self.powers_btn = pygame.Rect(866, 644, 166, 66)   # opens the in-game shop items (POWERS) list
+        self.power_rows: list[tuple[str, pygame.Rect]] = []
+        self.powers_panel = pygame.Rect(700, 272, 332, 356)
         self.speed_btn = pygame.Rect(1048, 644, 84, 66)
         self.start_btn = pygame.Rect(1142, 644, 126, 66)
         self.gear_btn = pygame.Rect(1214, 10, 58, 58)
@@ -133,6 +133,8 @@ class UI:
     def layout(self, game: "Game") -> None:
         """Rebuild the panel rectangles for the selected tower (every frame and before hit tests)."""
         t = game.selected
+        pp = self.powers_panel
+        self.power_rows = [(pid, pygame.Rect(pp.x + 14, pp.y + 52 + i * 50, pp.w - 28, 46)) for i, pid in enumerate(ITEM_ORDER)]
         self.ability_rects = [] if t is None else [(a, pygame.Rect(244 + i * 60, 642, 56, 68)) for i, a in enumerate(actives_of(t)[:3])]
         if t is not self._last_selected:
             self.graph.focused = False
@@ -173,8 +175,8 @@ class UI:
             self.opt_rows.append((key, pygame.Rect(p.x + 24, y, p.w - 48, 34)))
             y += 38
         y += 6
-        bw = (p.w - 48 - 20) // 3
-        for i, key in enumerate(("fullscreen", "restart", "resume")):
+        bw = (p.w - 48 - 30) // 4
+        for i, key in enumerate(("fullscreen", "restart", "menu", "resume")):
             self.opt_rows.append((key, pygame.Rect(p.x + 24 + i * (bw + 10), y, bw, 44)))
 
     def activity_rects(self, tower_kind: str) -> list[tuple[str, pygame.Rect]]:
@@ -190,13 +192,22 @@ class UI:
             self._build_options_layout()
             for key, rect in self.opt_rows:
                 if rect.collidepoint(pos):
-                    if key in ("fullscreen", "restart", "resume"):
+                    if key in ("fullscreen", "restart", "menu", "resume"):
                         return ("opt", key, 0)
                     return ("opt", key, -1 if pos[0] < rect.centerx - 10 and key != "auto_start" else 1)
             return ("noop",)
         g = self.graph.hit_test(pos, game)
         if g is not None:
             return g
+        if not self.graph.visible(game):
+            if game.powers_open:
+                for pid, rect in self.power_rows:
+                    if rect.collidepoint(pos):
+                        return ("power", pid)
+            if self.powers_btn.collidepoint(pos):
+                return ("powers",)
+            if game.powers_open and self.powers_panel.collidepoint(pos):
+                return ("noop",)
         for i, (aid, rect) in enumerate(self.ability_rects):
             if rect.collidepoint(pos):
                 return ("ability", i)
@@ -237,6 +248,8 @@ class UI:
             self._draw_tower_panel(surface, game)
         self._draw_bar(surface, game)
         self._draw_toast(surface, game)
+        if game.powers_open and not self.graph.visible(game):
+            self._draw_powers(surface, game)
         self._draw_tooltip(surface, game)
         if game.options_open:
             self._draw_options(surface, game)
@@ -264,8 +277,8 @@ class UI:
         surface.blit(gfx.icon("coin", 46), (172, 8))  # money (+ popups)
         shown = int(self.shown_money if self.shown_money is not None else game.money)
         size = 38 + int(7 * self.pulse)
-        r = draw_outlined(surface, f"${shown}", (226, 30), size, GOLD if self.pulse < 0.01 else (255, 255, 255),
-                          anchor="midleft", width=3)
+        r = draw_outlined_digits(surface, f"${shown}", (226, 30), size, GOLD if self.pulse < 0.01 else (255, 255, 255),
+                                width=3)
         for text, col, age in self.popups:
             f = age / POPUP_SECONDS
             img = outlined_text(text, 28 + int(6 * max(0.0, 1 - f * 5)), col, COLORS["ink"], 2).copy()
@@ -346,6 +359,8 @@ class UI:
             for i, (kind, rect) in enumerate(self.shop_btns.items()):
                 self._draw_card(surface, game, kind, rect, i + 1)
         self._draw_abilities(surface, game)
+        if not self.graph.visible(game):
+            self._draw_powers_button(surface, game)
         fast = game.speed > 1  # orange: speed (x1/x2/x3), green: start / skip the preparation
         self._btn(surface, self.speed_btn, COLORS["btn_orange"], game, pressed=fast)
         surface.blit(gfx.icon("ff", 34), (self.speed_btn.x + 25, self.speed_btn.y + 5))
@@ -365,12 +380,40 @@ class UI:
         if sub:
             draw_outlined(surface, sub, (cx, self.start_btn.centery + 14), 17, (255, 255, 255), center=True, width=1)
 
+    def _draw_powers_button(self, surface, game: "Game") -> None:
+        r = self.powers_btn
+        total = sum(game.profile.owned(i) for i in ITEM_ORDER)
+        self._btn(surface, r, (150, 90, 210), game, pressed=game.powers_open)
+        draw_outlined(surface, "POWERS", (r.centerx, r.centery - 8), 26, center=True)
+        draw_outlined(surface, f"{total} owned", (r.centerx, r.centery + 17), 17, (235, 220, 255) if total else (190, 180, 210),
+                      center=True, width=1)
+
+    def _draw_powers(self, surface, game: "Game") -> None:
+        """List of the in-game shop items: icon, name, how many you own / how many uses are left this run."""
+        p = self.powers_panel
+        surface.blit(gfx.panel_surface(p.w, p.h), (p.x - 2, p.y - 2))
+        draw_outlined(surface, "POWERS", (p.centerx, p.y + 26), 32, (255, 255, 255), center=True, width=3)
+        for pid, rect in self.power_rows:
+            ok, _why = powers.status(game, pid)
+            owned = game.profile.owned(pid)
+            self._btn(surface, rect, (96, 120, 190) if ok else (70, 74, 90), game, enabled=ok, radius=10)
+            icon = shop_icons.icon(ITEMS[pid]["icon"], 38)
+            surface.blit(icon, icon.get_rect(midleft=(rect.x + 8, rect.centery)))
+            draw_outlined(surface, ITEMS[pid]["name"], (rect.x + 54, rect.centery - 8), 19,
+                          (255, 255, 255) if ok else (200, 204, 216), anchor="midleft", width=2)
+            sub = f"{powers.left_this_run(game, pid)} uses left this run"
+            draw_outlined(surface, sub, (rect.x + 54, rect.centery + 11), 14, (225, 230, 245), anchor="midleft", width=1)
+            draw_outlined(surface, f"x{owned}", (rect.right - 12, rect.centery), 26, GOLD if owned else COLORS["bad"],
+                          anchor="midright", width=2)
+        draw_outlined(surface, "Buy more in the main-menu SHOP", (p.centerx, p.bottom - 14), 14, COLORS["text_dim"],
+                      center=True, width=1)
+
     def _draw_abilities(self, surface, game: "Game") -> None:
         t = game.selected
         for i, (aid, rect) in enumerate(self.ability_rects):
             cfg = ACTIVES[aid]
             cd = t.active_cd.get(aid, 0.0)
-            live = game.phase.value == "battle" and cd <= 0
+            live = actives_phase_ok(game, aid) and cd <= 0 and not (aid == "diditcode" and game.code_uses >= DIDITCODE_MAX_PER_PREP)
             self._btn(surface, rect, cfg["color"], game, live, 10, pressed=game.aiming is not None and game.aiming[1] == aid)
             icon = cfg["icon"]
             if icon in ("cube", "pyramid", "sphere"):
@@ -482,7 +525,7 @@ class UI:
     @staticmethod
     def _base_stats(stats: dict) -> str:
         s = {**DEFAULT_STATS, **stats}
-        parts = [f"Dmg {s['damage']:g}", f"CD {s['cooldown']:.1f}s", f"Range {_range_text(s['range'])}"]
+        parts = [f"Dmg {s['damage']:g}", f"CD {s['cooldown']:.1f}s", f"Range {s['range']:g}"]
         if s["aoe_radius"]:
             parts.append(f"AoE {s['aoe_radius']:g}")
         if s["slow"]:
@@ -495,7 +538,7 @@ class UI:
     @staticmethod
     def _stats_text(t) -> str:
         s = t.stats
-        parts = [f"Dmg {s['damage']:g}", f"CD {s['cooldown']:.2f}s", f"Range {_range_text(s['range'])}"]
+        parts = [f"Dmg {s['damage']:g}", f"CD {s['cooldown']:.2f}s", f"Range {s['range']:g}"]
         if s["aoe_radius"] > 0:
             parts.append(f"AoE {s['aoe_radius']:g}")
         if s["slow"] > 0:
@@ -547,10 +590,11 @@ class UI:
         surface.blit(gfx.panel_surface(p.w, p.h), (p.x - 2, p.y - 2))
         draw_outlined(surface, "OPTIONS", (p.centerx, p.y + 40), 44, (255, 255, 255), center=True, width=3)
         for key, rect in self.opt_rows:
-            if key in ("fullscreen", "restart", "resume"):
-                base = {"fullscreen": COLORS["btn_blue"], "restart": COLORS["btn_red"], "resume": COLORS["btn_green"]}[key]
+            if key in ("fullscreen", "restart", "menu", "resume"):
+                base = {"fullscreen": COLORS["btn_blue"], "restart": COLORS["btn_red"], "menu": COLORS["btn_orange"],
+                        "resume": COLORS["btn_green"]}[key]
                 self._btn(surface, rect, base, game, True, 10)
-                draw_outlined(surface, key.upper(), rect.center, 22, center=True)
+                draw_outlined(surface, key.upper(), rect.center, 20, center=True)
                 continue
             label = next(r[1] for r in opts_mod.ROWS if r[0] == key)
             val = game.options[key]

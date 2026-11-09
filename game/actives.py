@@ -1,17 +1,17 @@
-"""Active skills: Jalu Sweep (Mark) / Loom Reset, Zizi Nap Time, Bima Cube / Pyramid / Sphere.
+"""Active skills: Romli DiditCode (preparation), Jalu Sweep (Mark) / Loom Reset, Zizi Nap Time, Bima Cube / Pyramid / Sphere.
 
 A tower's actives are the effects it has that appear in ACTIVES. Aimed skills (aim=True) wait for a map click.
 Cooldowns tick in simulation time (Tower.active_cd). Usable during battle only.
 """
 from __future__ import annotations
 
-from data import fadhli as fadhli_cfg, mark as mark_cfg
+from data import fadhli as fad_cfg
+from data import mark as mark_cfg
 from data.bima import ABILITIES
+from data.settings import DIDITCODE_COOLDOWN, DIDITCODE_MAX_PER_PREP
 from game import bima, fadhli, mark
 
 ACTIVES = {
-    "fadhli_power_active": {"name": "Meteor!", "cooldown": fadhli_cfg.POWER_COOLDOWN, "aim": False, "color": (255, 100, 40), "icon": "fire", "desc": "Empower the next three shots; each makes a huge, damaging crater."},
-    "fadhli_gyro_active": {"name": "Arigatou, Gyro", "cooldown": fadhli_cfg.GYRO_COOLDOWN, "aim": False, "color": (100, 220, 230), "icon": "clock", "desc": "5s of Spinned tornadoes and Golden Ratio damage."},
     "sweep_active": {"name": "Sweep", "cooldown": mark_cfg.SWEEP_COOLDOWN, "aim": False,
                      "color": (255, 214, 70), "icon": "sweep",
                      "desc": "Mark vanishes; a sweeper runs the path backwards, hitting every Didit."},
@@ -21,6 +21,16 @@ ACTIVES = {
     "nap_time_active": {"name": "Nap Time", "cooldown": 40.0, "aim": False, "stun": 3.0, "boss_slow": 0.7,
                         "color": (200, 120, 255), "icon": "moon",
                         "desc": "Everything in range falls asleep (bosses are only slowed)."},
+    "galaxy_active": {"name": "Galaxy", "cooldown": fad_cfg.GALAXY_COOLDOWN, "aim": False,
+                      "color": (255, 150, 70), "icon": "meteor",
+                      "desc": "Garp: the next throw is a giant, long-charged mega throw (x5 damage, huge blast)."},
+    "golden_active": {"name": "Golden", "cooldown": fad_cfg.GOLDEN_COOLDOWN, "aim": False,
+                      "color": (255, 214, 70), "icon": "spiral",
+                      "desc": "Golden Ratio 5s: throws 2x faster; damage /4, then x1.618 after every throw."},
+    # Romli's own ability (every Romli has it from the start). Preparation phase only: a code-bug puzzle for money.
+    "diditcode": {"name": "DiditCode", "cooldown": DIDITCODE_COOLDOWN, "aim": False, "phase": "prep",
+                  "color": (70, 200, 110), "icon": "code",
+                  "desc": "Preparation only: find and fix the bug in a code snippet to earn money."},
     "cube_active": {"name": "Cube", "cooldown": ABILITIES["cube_active"]["cooldown"], "aim": True,
                     "color": (255, 160, 60), "icon": "cube", "desc": "Click the path: a cube blocks enemies and hurts them."},
     "pyramid_active": {"name": "Pyramid", "cooldown": ABILITIES["pyramid_active"]["cooldown"], "aim": False,
@@ -31,12 +41,22 @@ ACTIVES = {
 
 
 def actives_of(tower) -> list[str]:
-    return [e for e in tower.effects if e in ACTIVES]
+    ids = [e for e in tower.effects if e in ACTIVES]
+    if tower.kind == "romli":
+        ids.insert(0, "diditcode")
+    return ids
+
+
+def phase_ok(game, aid: str) -> bool:
+    """Most abilities work in battle only; DiditCode works in preparation only."""
+    return game.phase.value == ACTIVES[aid].get("phase", "battle").replace("prep", "preparation")
 
 
 def can_use(game, tower, aid: str) -> tuple[bool, str]:
-    if game.phase.value != "battle":
-        return False, "Abilities work during a battle"
+    if not phase_ok(game, aid):
+        return False, "DiditCode works during preparation" if aid == "diditcode" else "Abilities work during a battle"
+    if aid == "diditcode" and (game.code_uses >= DIDITCODE_MAX_PER_PREP or game.code is not None):
+        return False, "No more DiditCode this preparation"
     if tower.active_cd.get(aid, 0.0) > 0:
         return False, f"{ACTIVES[aid]['name']} is recharging"
     if tower.vanished:
@@ -55,16 +75,15 @@ def use(game, tower, aid: str, pos=None) -> bool:
         return False
     cfg = ACTIVES[aid]
     fired = False
-    if aid == "fadhli_power_active":
-        tower.power_shots = fadhli_cfg.POWER_SHOTS
-        game.fx.vfx.comic(tower.pos + (0, -42), "THREE METEOR BOULES!", (255, 120, 45), 28, 1.0)
-        fired = True
-    elif aid == "fadhli_gyro_active":
-        fadhli.start_gyro(tower)
-        game.fx.vfx.comic(tower.pos + (0, -42), "GOLDEN RATIO!", (255, 220, 80), 30, 1.0)
-        fired = True
-    elif aid == "sweep_active":
+    if aid == "diditcode":
+        game.open_code(tower)   # the cooldown starts now (a free cancel refunds it)
+        return True
+    if aid == "sweep_active":
         fired = mark.start_sweep(game, tower)
+    elif aid == "galaxy_active":
+        fired = fadhli.start_galaxy(game, tower)
+    elif aid == "golden_active":
+        fired = fadhli.start_golden(game, tower)
     elif aid == "loom_reset_active":
         fired = _loom(game, tower, cfg)
     elif aid == "nap_time_active":

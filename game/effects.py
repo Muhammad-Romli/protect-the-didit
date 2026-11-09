@@ -88,6 +88,30 @@ def _mark_knockback(tower, game, hook, **ctx):
     return None
 
 
+def _fadhli_bounce(tower, game, hook, **ctx):
+    """Johnny tier 2: the steel ball bounces on (50%, then -5 points per bounce). See game/fadhli.py."""
+    if hook == "hit":
+        from game import fadhli
+        fadhli.bounce(game, tower, ctx["proj"], ctx["victims"])
+    return None
+
+
+def _fadhli_status(tower, game, hook, **ctx):
+    """Johnny tier 3: every hit 20% stun / 30% slow / 50% nothing."""
+    if hook == "hit":
+        from game import fadhli
+        fadhli.status(game, tower, ctx["proj"], ctx["victims"])
+    return None
+
+
+def _garp_knockback(tower, game, hook, **ctx):
+    """Garp tier 3: heavy hits knock Didits back along the path."""
+    if hook == "hit":
+        from game import fadhli
+        fadhli.shove(game, tower, ctx["proj"], ctx["victims"])
+    return None
+
+
 def _geo_effects(tower, game, hook, **ctx):
     """Bima Geometry Lv2+: shape stacks. The hit target gets its shape slot filled (see game/bima.py)."""
     if hook != "hit":
@@ -157,8 +181,11 @@ EFFECTS: dict[str, Callable] = {
     "random_event_strong": _random_event(True),
     **{n: _marker for n in ("graph_axis", "graph_patterns", "graph_advanced", "geo_shapes", "geo_3d",
                             "loom_reset_active", "nap_time_active", "mark_melee", "mark_rage", "sweep_active",
-                            "cube_active", "pyramid_active", "sphere_active", "fadhli_power_active",
-                            "fadhli_gyro_active", "fadhli_sky", "fadhli_crater", "fadhli_bounce", "fadhli_spin")},
+                            "cube_active", "pyramid_active", "sphere_active", "galaxy_active", "golden_active",
+                            "fadhli_barrage")},
+    "fadhli_bounce": _fadhli_bounce,
+    "fadhli_status": _fadhli_status,
+    "garp_knockback": _garp_knockback,
     "mark_knockback": _mark_knockback,
     "time_push": _time_push,
     "speed_against_time": _speed_against_time,

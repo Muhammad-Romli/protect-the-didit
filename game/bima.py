@@ -130,6 +130,7 @@ def fire_graph(game, t) -> bool:
     shot = CurveShot(t, pv["pts"], pv["cum"], gt, t.stats["damage"] * GRAPH["dmg_mult"][gt])
     shot.cost = pv["cost"]
     shot.finalized = False
+    shot.total_damage, shot.last_pos = 0.0, None
     game.shots.append(shot)
     t.kick = 0.1
     game.fx.graph_fire(t, pv["cost"])
@@ -303,10 +304,18 @@ def update_world(game, dt: float) -> None:
         for s in game.shots:
             def on_hit(e, k, s=s):
                 dmg = s.damage * max(GRAPH["falloff_floor"], s.falloff ** k)
-                game.hit_enemy(e, dmg, color=SHOT_COLOR, source=s.tower)
+                game.hit_enemy(e, dmg, color=SHOT_COLOR, source=s.tower, armor_hits=GRAPH["armor_hits"])
+                real = dmg * game.damage_multiplier(e)
+                s.total_damage += real
+                game.fx.graph_hit(e, real, k, s.last_pos, first=(k == 0))
+                s.last_pos = Vec(e.pos)
+            was = s.s
             s.advance(dt, grid, on_hit)
+            if s.s < s.total:   # sparks shed by the travelling head
+                game.fx.graph_trail(s.head_pos())
             if s.s >= s.total and not s.finalized:
                 s.finalized = True
+                game.fx.graph_done(s.tower, s.hits, s.total_damage)
                 if s.hits == 0:  # missed everything: part of the energy comes back
                     back = s.cost * GRAPH["miss_refund"]
                     s.tower.brain = min(brain_max(s.tower), s.tower.brain + back)

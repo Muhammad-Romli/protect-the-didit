@@ -10,7 +10,8 @@ import pygame
 
 from data.activities import ACTIVITIES, STACKS
 from data.map import MAP_CORNER_RADIUS, MAP_WAYPOINTS, STASH_POS
-from data.settings import (BOUNTY_MULT, BOUNTY_WAVE_GROWTH, BUILD_RECT, COLORS, DEBUG_KNOWLEDGE, DEBUG_MONEY, SPEED_STEPS,
+from data.settings import (BOUNTY_MULT, BOUNTY_WAVE_GROWTH, BUILD_RECT, COINS_PER_WAVE, COINS_WIN_BONUS, COLORS,
+                           DEBUG_KNOWLEDGE, DEBUG_MONEY, SELL_REFUND, SPEED_STEPS,
                            INCOME_INTERVAL_SECONDS, MAX_ACTIVITIES, PATH_MIN_DISTANCE, PATH_WIDTH, PLAYFIELD_RECT,
                            PREP_GRACE_SECONDS, PREP_MAX_HP_MULT, PREP_MAX_SECONDS,
                            PREP_MAX_SPEED_MULT, SELL_CONFIRM_SECONDS, START_MONEY,
@@ -20,8 +21,8 @@ from data.towers import TOWER_ORDER, TOWERS
 from data.waves import NEW_ENEMY_WAVES, SPECIAL_BONUS_MULT, SPECIAL_WAVES, WAVE_SCALING, WAVES
 from data.enemies import ENEMIES
 from data.effects import EFFECT_PARAMS
-from data.fadhli import INFINITE_RANGE
-from game import actives, bima, fadhli, mark, options as opts_mod, savegame, web
+from game import actives, bima, currency, diditcode, fadhli, mark, options as opts_mod, powers, savegame, web
+from game.profile import Profile
 from game.effects import EFFECTS
 from game import gfx
 from game.assets import sprite
@@ -37,6 +38,8 @@ from game.utils import Path, Vec, draw_outlined, draw_range_circle, round_corner
 from game.wave_manager import WaveManager
 
 MESSAGE_SECONDS = 2.5
+END_AGAIN_RECT = (330, 520, 300, 70)   # win / lose screen buttons (also used by game/touch.py)
+END_MENU_RECT = (650, 520, 300, 70)
 
 
 class State(Enum):
@@ -51,8 +54,9 @@ class Phase(Enum):
 
 
 class Game:
-    def __init__(self, screen: pygame.Surface) -> None:
+    def __init__(self, screen: pygame.Surface, profile: Profile | None = None) -> None:
         self.screen = screen
+        self.profile = profile if profile is not None else Profile()  # blank, never saved (tests); main.py passes the real one
         self.ui = UI()
         self.fx = FX()
         self.playfield = pygame.Rect(*PLAYFIELD_RECT)
@@ -83,10 +87,22 @@ class Game:
         self._last_prep_sec = 0
         self._hover_key = None
         self.state = State.PLAYING
-        self.money = float(START_MONEY)
-        self.ball_knowledge = 0      # Jalu upgrade currency, earned by Larping
-        self.stash_hp = START_STASH_HP
+        self.money = float(START_MONEY + self.profile.bonus("allowance"))   # permanent shop buffs apply here
+        self.ball_knowledge = int(self.profile.bonus("notes"))               # Jalu upgrade currency, earned by Larping
+        self.stash_max = START_STASH_HP + int(self.profile.bonus("crate"))
+        self.stash_hp = self.stash_max
+        self.powers_used: dict[str, int] = {}   # in-game shop items used this run (per-run limits)
+        self.powers_open = False                # the POWERS list above the bottom bar
+        self.insta: dict | None = None          # an Insta tower waiting to be placed (free, pre-upgraded)
+        self.code: diditcode.DiditCode | None = None   # Romli's DiditCode overlay (modal) while it is open
+        self.code_tower: Tower | None = None
+        self.code_uses = 0                      # DiditCode attempts used in this preparation phase
+        self.run_start_wave = 0                 # waves already played when this run began (CONTINUE)
+        self.run_reward: dict | None = None     # Didit Rupiah earned when the run ended (end screen)
+        self.exit_to_menu = False               # main.py leaves the game loop when this turns True
         self.towers: list[Tower] = []
+        self._effect_cache: list = []        # (tower, effect fn) pairs for effect_values
+        self._effect_cache_key = None
         self.enemies: list[Enemy] = []
         self.projectiles: list[Projectile] = []
         self.waves = WaveManager()
@@ -107,7 +123,6 @@ class Game:
         self.cubes: list = []           # Bima cubes (block the path)
         self.sweeps: list = []          # Mark's running sweeps (see game/mark.py)
         self.zones: list = []           # Bima sphere trap zones
-        self.craters: list[list] = []   # Fadhli: [position, radius, dps, seconds left, source, seconds since last hit]
         self.shield, self.shield_t = 0.0, 0.0   # base shield (Bima sphere)
         self.hitstop, self.last_hitstop = 0.0, -9.0
         self.aiming = None              # (tower, ability id) while waiting for a map click
@@ -140,6 +155,9 @@ class Game:
         if not self.waves.can_start:
             return
         self.battle_hp_mult, self.battle_speed_mult = self.enemy_multipliers()
+        if self.code is not None:   # DiditCode is a preparation ability: the wave closes it (no reward)
+            self.code = self.code_tower = None
+            self.flash("Wave started: DiditCode closed")
         stopped = self._stop_all_activities()
         self.waves.start_next()
         boss = any(ENEMIES[kind]["is_boss"] for kind, *_ in WAVES[self.waves.number - 1])
@@ -217,6 +235,15 @@ class Game:
 
     # ---------------------------------------------------------------- input
     def handle_event(self, event: pygame.event.Event) -> None:
+        if self.code is not None and self.state == State.PLAYING:
+            if event.type == pygame.MOUSEMOTION:
+                self.code.mouse = event.pos
+            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP) and self.code.wants(event.pos):
+                self._code_event(event)   # a click on the DiditCode panel / tab: the game does not see it
+                return
+            elif event.type == pygame.KEYDOWN and not self.code.collapsed and event.key == pygame.K_ESCAPE:
+                self._code_event(event)
+                return
         if self.touch.handle_event(event):
             return
         if event.type == pygame.MOUSEMOTION:
@@ -241,6 +268,62 @@ class Game:
             elif event.button == 3:
                 self.placing = None
                 self.aiming = None
+                self.insta = None
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.end_click(event.pos)
+
+    # ------------------------------------------------------------- DiditCode
+    def open_code(self, tower: Tower) -> None:
+        """Romli's DiditCode ability: open the puzzle overlay (cooldown + use are counted now, a free cancel refunds them)."""
+        self.code = diditcode.DiditCode(self.waves.number + 1)
+        self.code_tower = tower
+        self.code_uses += 1
+        tower.active_cd["diditcode"] = actives.ACTIVES["diditcode"]["cooldown"]
+        self.placing = self.aiming = self.insta = None
+        self.fx.click()
+
+    def _code_event(self, event: pygame.event.Event) -> None:
+        code = self.code
+        res = None
+        if event.type == pygame.MOUSEMOTION:
+            self.mouse_pos = event.pos
+            code.mouse = event.pos
+        elif event.type == pygame.KEYDOWN:
+            res = code.key(event.key)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.mouse_pos = event.pos
+            res = code.click(event.pos)
+        if res is None:
+            return
+        tower = self.code_tower
+        if res == "solved":
+            self.add_money(code.reward)
+            self.fx.income(tower, code.reward)
+        elif res == "failed":
+            self.fx.invalid()
+        elif res == "wrong":
+            self.fx.invalid()
+        elif res == "cancel":
+            if not code.touched and tower is not None:   # nothing was tried: no cost
+                tower.active_cd["diditcode"] = 0.0
+                self.code_uses = max(0, self.code_uses - 1)
+            self.code = self.code_tower = None
+        elif res == "close":
+            self.code = self.code_tower = None
+        if res in ("solved", "wrong"):
+            self.fx.click()
+
+    def end_click(self, pos) -> None:
+        """Win / lose screen buttons: PLAY AGAIN (new run) and MAIN MENU."""
+        if self.state == State.PLAYING:
+            return
+        again, menu = (pygame.Rect(*r) for r in (END_AGAIN_RECT, END_MENU_RECT))
+        if again.collidepoint(pos):
+            self.fx.click()
+            self.reset()
+        elif menu.collidepoint(pos):
+            self.fx.click()
+            self.exit_to_menu = True
 
     def _on_key(self, key: int) -> None:
         if key == pygame.K_r:
@@ -349,6 +432,7 @@ class Game:
             if tower is not None and tower is not self.selected:
                 self.fx.select(tower)
             self.selected = tower
+            self.powers_open = False
 
     def _do_action(self, action: tuple) -> None:
         name = action[0]
@@ -377,6 +461,9 @@ class Game:
                 self.reset()
             elif action[1] == "resume":
                 self.options_open = False
+            elif action[1] == "menu":
+                self.options_open = False
+                self.exit_to_menu = True
             else:
                 opts_mod.change(self.options, action[1], action[2])
                 self.apply_options()
@@ -390,6 +477,13 @@ class Game:
         elif name == "pause":
             self.fx.click()
             self.paused = not self.paused
+        elif name == "powers":
+            self.fx.click()
+            self.powers_open = not self.powers_open
+            if self.powers_open:
+                self.selected = None
+        elif name == "power":
+            powers.use(self, action[1])
         elif name == "activity" and self.selected:
             self._toggle_activity(action[1])
         elif name == "upgrade" and self.selected:
@@ -398,6 +492,7 @@ class Game:
             self._request_sell()
 
     def _choose_shop(self, kind: str) -> None:
+        self.insta = None   # a normal tower card always cancels a pending Insta placement
         if self.placing == kind:
             self.placing = None
             self.fx.click()
@@ -411,6 +506,8 @@ class Game:
     def _toggle_speed(self) -> None:
         """Cycle x1 -> x2 -> x3 -> x1."""
         self.speed = SPEED_STEPS[(SPEED_STEPS.index(self.speed) + 1) % len(SPEED_STEPS)]
+        if self.speed > 1 and self.phase == Phase.PREP and not self.options.get("prep_speed"):
+            self.flash(f"x{self.speed}: battles only (preparation stays x1, see Options)", 2.2)
 
     def _cycle_target(self, direction: int) -> None:
         modes = opts_mod.TARGET_MODES
@@ -421,7 +518,8 @@ class Game:
     # -------------------------------------------------------------- upgrades
     def upgrade_cost(self, tower: Tower, up: dict) -> int:
         """Upgrade price after nearby discount auras (strongest aura wins)."""
-        discount = max(self.effect_values("upgrade_discount", other=tower), default=0.0)
+        aura = max(self.effect_values("upgrade_discount", other=tower), default=0.0)
+        discount = min(0.6, aura + self.profile.bonus("discount"))  # aura + permanent Friendly Discount
         return round(up["cost"] * (1 - discount))
 
     def _try_upgrade(self, path: int) -> None:
@@ -486,9 +584,16 @@ class Game:
             return False, "Too close to the path"
         if any(p.distance_to(t.pos) < 2 * TOWER_RADIUS for t in self.towers):
             return False, "Overlaps another tower"
-        if self.money < TOWERS[kind]["cost"]:
+        if self.money < TOWERS[kind]["cost"] and not self.free_placement(kind):
             return False, "Not enough money"
         return True, ""
+
+    def sell_refund(self) -> float:
+        return SELL_REFUND + self.profile.bonus("haggler")
+
+    def free_placement(self, kind: str) -> bool:
+        """True while an Insta tower of this kind is being placed (costs nothing, comes pre-upgraded)."""
+        return self.insta is not None and self.insta["kind"] == kind
 
     def _try_place(self, pos) -> None:
         kind = self.placing
@@ -497,8 +602,17 @@ class Game:
             self.flash(reason)
             self.fx.invalid()
             return
-        self.add_money(-TOWERS[kind]["cost"])
-        tower = Tower(kind, pos)
+        free = self.free_placement(kind)
+        tower = Tower(kind, pos, self.sell_refund())
+        if free:
+            insta, self.insta = self.insta, None
+            for path, tiers in enumerate(insta["tiers"]):
+                for _ in range(tiers):
+                    tower.upgrade(path, paid=0)
+            tower.spent = 0   # a free tower sells for nothing
+            powers.consume(self, insta["id"])
+        else:
+            self.add_money(-TOWERS[kind]["cost"])
         tower.targeting = self.options["default_target"]
         self.towers.append(tower)
         self.fx.placed(tower)
@@ -521,44 +635,39 @@ class Game:
     # --------------------------------------------------------- effect hooks
     def effect_values(self, hook: str, **ctx) -> list[float]:
         """Ask every tower's effects for a value for `hook` (see game/effects.py)."""
+        key = (Tower.effects_version, len(self.towers))
+        if self._effect_cache_key != key:   # rebuilt only when towers are added/removed/upgraded
+            self._effect_cache = [(t, EFFECTS[name]) for t in self.towers for name in t.effects if name in EFFECTS]
+            self._effect_cache_key = key
         values: list[float] = []
-        for t in self.towers:
-            for name in t.effects:
-                fn = EFFECTS.get(name)
-                if fn is not None:
-                    v = fn(t, self, hook, **ctx)
-                    if v is not None:
-                        values.append(v)
+        for t, fn in self._effect_cache:
+            v = fn(t, self, hook, **ctx)
+            if v is not None:
+                values.append(v)
         return values
 
     def damage_multiplier(self, enemy: Enemy) -> float:
         mult = max(self.effect_values("damage_taken", enemy=enemy), default=1.0)
         if enemy.vuln_timer > 0:  # Bima's square mark
             mult *= 1.0 + enemy.vuln
-        return min(mult, 1.6) if enemy.vuln_timer > 0 else mult
+            mult = min(mult, 1.6)
+        return mult * (1.0 + self.profile.bonus("tools"))  # permanent shop buff, applied after the cap
 
     def attack_speed_mult(self, tower: Tower) -> float:
         return 1.0 + max(self.effect_values("speed_bonus", other=tower), default=0.0)
 
     def hit_enemy(self, enemy: Enemy, damage: float, slow: float = 0.0,
-                  slow_duration: float = 0.0, color=(255, 240, 180), source: Tower | None = None) -> None:
+                  slow_duration: float = 0.0, color=(255, 240, 180), source: Tower | None = None,
+                  armor_hits: int | None = None) -> None:
         """Single place where tower damage reaches an enemy (applies debuffs + slow).
         Armored enemies only lose armor: 1 per hit, 3 per hit from a tower with armor_breaker."""
         if slow > 0:
             enemy.apply_slow(slow, slow_duration)
         if enemy.armor > 0:
-            hits = EFFECT_PARAMS["armor_breaker"]["hits"] if source is not None and "armor_breaker" in source.effects else 1
+            hits = armor_hits or (EFFECT_PARAMS["armor_breaker"]["hits"] if source is not None and "armor_breaker" in source.effects else 1)
             self.fx.armor_hit(enemy, enemy.break_armor(hits), hits)
             return
-        dealt = damage * self.damage_multiplier(enemy)
-        enemy.take_damage(dealt)
-        from data.settings import DAMAGE_STAGES
-        stage = next((cfg for cfg in reversed(DAMAGE_STAGES) if dealt >= cfg[0]), None)
-        if stage:
-            _, size, stage_color = stage
-            # Tiny deterministic stagger helps separate simultaneous large-hit labels.
-            offset = ((len(self.fx.vfx.labels) % 5) - 2) * 8
-            self.fx.vfx.text(enemy.pos + Vec(offset, -18), f"{int(round(dealt))}", stage_color, size, 0.85, 38)
+        enemy.take_damage(damage * self.damage_multiplier(enemy))
         self.fx.hit(enemy, color, source)
 
     # --------------------------------------------------------------- update
@@ -569,12 +678,15 @@ class Game:
         self.sell_timer -= dt
         if self.message_timer <= 0:
             self.message = ""
-        if self.paused or self.options_open:
+        if self.paused or self.options_open:   # (DiditCode does NOT pause the game)
             return
         if self.state != State.PLAYING:
             self.fx.update(dt)
             return
-        for _ in range(self.speed):  # x2 / x3 run the simulation several times per frame (stays accurate)
+        # x2 / x3 run the simulation several times per frame (stays accurate). Preparation always runs at x1
+        # (prep timer, Jalu's larping, Zizi's stacks, Romli's income) unless the option "x2 / x3 also speeds prep" is on.
+        steps = self.speed if (self.phase == Phase.BATTLE or self.options.get("prep_speed")) else 1
+        for _ in range(steps):
             self._step(dt)
             if self.state != State.PLAYING:
                 break
@@ -608,14 +720,11 @@ class Game:
             self.spawn_enemy(kind)
         for e in self.enemies:
             e.update(dt)
-            if getattr(e, "spinned_timer", 0.0) > 0:
-                e.spinned_timer = max(0.0, e.spinned_timer - dt)
             if e.slow_timer > 0 and random.random() < dt * 5:
                 self.fx.vfx.trail(e.pos + Vec(random.uniform(-6, 6), random.uniform(-6, 6)), (150, 200, 255))
         for t in self.towers:
             t.update(dt, self)
             self._tick_income(t, dt)
-        fadhli.tick_craters(self, dt)
         for p in self.projectiles:
             p.update(dt)
             self.fx.trail(p)
@@ -636,7 +745,7 @@ class Game:
         else:
             n = max(1, min(self.waves.number, len(WAVE_SCALING)))
             wave_hp, wave_speed = WAVE_SCALING[n - 1]
-            bounty = BOUNTY_MULT * (1 + BOUNTY_WAVE_GROWTH * (n - 1))
+            bounty = BOUNTY_MULT * (1 + BOUNTY_WAVE_GROWTH * (n - 1)) * (1 + self.profile.bonus("wallet"))
             e = Enemy(kind, self.path, True, self.battle_hp_mult * wave_hp, self.battle_speed_mult * wave_speed, bounty)
         e.distance = max(0.0, distance)
         e.pos = self.path.position_at(e.distance)
@@ -678,17 +787,11 @@ class Game:
                        if e.alive and e.pos.distance_to(p.pos) <= p.aoe_radius + e.radius]
         else:
             victims = [p.target] if p.target.alive else []
-        boule = p.source is not None and p.source.kind == "fadhli"
         if not victims:
-            if boule:
-                fadhli.on_miss(p)   # target died in flight: an empowered shot is not used up
             return
+        self.fx.projectile_hit(p, victims)
         for e in victims:
-            if boule:
-                fadhli.apply_status(e, p.source, p.gyro)
             self.hit_enemy(e, p.damage, p.slow, p.slow_duration, p.color, p.source)
-        if boule:
-            fadhli.after_hit(self, p, victims)
         if p.aoe_radius > 0:
             self.fx.aoe(p.pos, p.aoe_radius, p.color)
         self.add_money(p.money_on_hit)
@@ -738,9 +841,11 @@ class Game:
             self.stash_hp = 0
             self.state = State.LOST
             self.fx.lost()
+            self._end_run(False)
 
     def _finish_wave(self) -> None:
         self.waves.finish()
+        self.code_uses = 0   # a new preparation phase: DiditCode attempts are back
         self.prep_time = 0.0
         self._last_prep_sec = 0
         self.battle_hp_mult = self.battle_speed_mult = 1.0
@@ -760,9 +865,21 @@ class Game:
             self.state = State.WON
             self.fx.won()
             savegame.clear()  # a finished run has nothing to continue
+            self._end_run(True)
         elif self.waves.number % SAVE_EVERY_WAVES == 0:
             if savegame.autosave(self):  # background checkpoint, between waves (nothing in flight)
                 self.flash(f"Game saved (wave {self.waves.number})", 3.5)
+
+    def _end_run(self, won: bool) -> None:
+        """Pay Didit Rupiah for the waves cleared in THIS run (a CONTINUEd run only pays for the waves it played)."""
+        if self.run_reward is not None:
+            return
+        reached = self.waves.number if won else max(0, self.waves.number - 1)   # waves fully cleared in total
+        cleared = max(0, reached - self.run_start_wave)
+        boost = self.profile.bonus("booster")
+        coins = round((cleared * COINS_PER_WAVE + (COINS_WIN_BONUS if won else 0)) * (1 + boost))
+        self.profile.record_run(coins, won, reached)
+        self.run_reward = {"coins": coins, "waves": cleared, "win": won, "boost": round(boost * 100)}
 
     def load_save(self) -> bool:
         """Continue from the last autosave (title screen). False if there is none or it is unusable."""
@@ -809,8 +926,7 @@ class Game:
         self._draw_stash_glow(w)
         self.fx.vfx.draw_ambient(w)
         if self.selected:
-            if self.selected.stats["range"] < INFINITE_RANGE:   # infinite range (Fadhli Power T4): no ring
-                draw_range_circle(w, self.selected.pos, self.selected.stats["range"], (255, 255, 255))
+            draw_range_circle(w, self.selected.pos, self.selected.stats["range"], (255, 255, 255))
         # depth sorting: all shadows first, then towers + enemies back-to-front by y
         things = sorted([*self.towers, *self.enemies], key=lambda o: o.pos.y)
         for o in things:
@@ -822,21 +938,23 @@ class Game:
                 o.draw(w)
         for p in self.projectiles:
             p.draw(w)
-        for pos, radius, *_ in self.craters:
-            pygame.draw.circle(w, (125, 45, 20), (int(pos.x), int(pos.y)), int(radius), 2)
-            pygame.draw.circle(w, (255, 115, 35), (int(pos.x), int(pos.y)), max(2, int(radius * 0.25)), 1)
         bima.draw_world(w, self)
         mark.draw_world(w, self)
+        fadhli.draw_world(w, self)
         if self.selected is not None and self.selected.kind == "bima":
             bima.draw_preview(w, self.selected)
         self.fx.vfx.draw(w)
         self._draw_placement_preview(w)
         self._draw_aiming(w)
-        s.fill(COLORS["grass"])
-        s.blit(w, self.fx.vfx.shake_offset())  # whole playfield shakes, UI stays still
+        shake = self.fx.vfx.shake_offset()
+        if shake != (0, 0):   # the world covers the whole screen, so only a shaking frame shows the edges
+            s.fill(COLORS["grass"])
+        s.blit(w, shake)  # whole playfield shakes, UI stays still
         self.fx.vfx.draw_overlay(s, self.playfield)
         self._draw_vignette(s)
         self.ui.draw(s, self)
+        if self.code is not None:
+            self.code.draw(s, self.mouse_pos)
         if self.show_debug:
             self._draw_debug()
         elif self.options["fps"]:
@@ -913,8 +1031,26 @@ class Game:
         draw_outlined(self.screen, sub, (640, 358), 28, (255, 255, 255), center=True)
 
     def _draw_end_screen(self) -> None:
-        if self.state == State.WON:
-            self._draw_banner_panel("YOU WIN!", "The stash is safe." if self.touch.enabled else "The stash is safe.  Press R to play again", COLORS["good"])
-        else:
-            self._draw_banner_panel("GAME OVER", "The stash is gone." if self.touch.enabled else "The stash is gone.  Press R to restart", COLORS["bad"])
-        self.touch.draw(self.screen)
+        won = self.state == State.WON
+        dim = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+        dim.fill((10, 8, 20, 150))
+        self.screen.blit(dim, (0, 0))
+        panel = gfx.panel_surface(600, 290)
+        self.screen.blit(panel, panel.get_rect(center=(640, 340)))
+        draw_outlined(self.screen, "YOU WIN!" if won else "GAME OVER", (640, 238), 68,
+                      COLORS["good"] if won else COLORS["bad"], center=True, width=4)
+        draw_outlined(self.screen, "The stash is safe." if won else "The stash is gone.", (640, 296), 28, (255, 255, 255), center=True)
+        r = self.run_reward
+        if r is not None:
+            note = currency.note(76)
+            self.screen.blit(note, note.get_rect(midleft=(420, 354)))
+            draw_outlined(self.screen, f"+{r['coins']} Didit Rupiah", (506, 354), 38, currency.GREEN, anchor="midleft", width=3)
+            extra = f"{r['waves']} waves cleared" + (f"   (+{r['boost']}% Coin Booster)" if r["boost"] else "")
+            draw_outlined(self.screen, extra, (640, 404), 22, (230, 236, 250), center=True, width=2)
+            draw_outlined(self.screen, f"Total: {self.profile.coins}   -   spend them in the SHOP or trade them on Wallstreet", (640, 436), 20,
+                          (200, 225, 255), center=True, width=1)
+        for rect, label, base in ((END_AGAIN_RECT, "PLAY AGAIN", COLORS["btn_green"]), (END_MENU_RECT, "MAIN MENU", COLORS["btn_orange"])):
+            rc = pygame.Rect(*rect)
+            hover = rc.collidepoint(self.mouse_pos)
+            self.screen.blit(gfx.glossy(rc.w, rc.h, base, 16, (255, 255, 255), "hover" if hover else "normal"), (rc.x - 1, rc.y - 1))
+            draw_outlined(self.screen, label, rc.center, 34, (255, 255, 255), center=True, width=3)
