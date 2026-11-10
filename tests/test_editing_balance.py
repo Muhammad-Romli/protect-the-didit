@@ -52,6 +52,9 @@ for kind in ("romli", "zizi"):
     for look in (None, (0, 1), (0, 4), (1, 1), (1, 4)):
         assert sp.tower_sprite(kind, TOWER_RADIUS, (80, 200, 120), look) is not None
         w = models.weapon_image(kind, look, 30, False)
-        assert w is not None, (kind, look)
+        if (kind, look) == ("zizi", None):
+            assert w is None, "base Zizi holds no weapon (removed 2026-11-09)"
+        else:
+            assert w is not None, (kind, look)
 print("models OK")
 print("ALL OK")

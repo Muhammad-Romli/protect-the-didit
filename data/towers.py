@@ -17,7 +17,7 @@ DEFAULT_STATS = {
 }
 
 from data.mark import TIER_STATS as MARK_STATS
-from data.fadhli import GARP_STATS, JOHNNY_STATS
+from data.fadhli import FADHLI_BASE_DAMAGE, GARP_STATS, JOHNNY_STATS
 
 TOWER_ORDER = ["jalu", "romli", "zizi", "bima", "fadhli"]
 
@@ -61,16 +61,16 @@ TOWERS = {
     # Path A = Garp (heavy cannonballs), path B = Johnny + Tusk (steel balls). Numbers: data/fadhli.py, logic: game/fadhli.py.
     "fadhli": {
         "name": "Fadhli", "color": (120, 150, 200), "cost": 300,
-        "stats": {"damage": 5.5, "cooldown": 1.8, "range": 150, "proj_speed": 320},
+        "stats": {"damage": FADHLI_BASE_DAMAGE, "cooldown": 1.8, "range": 150, "proj_speed": 320},
         "paths": [
             {"name": "Garp (Power)", "tiers": [
                 _up("Marine coat", 150, "Wears Garp's coat. Heavier throws and a bit more range.",
                     GARP_STATS[0]),
-                _up("Iron Fist", 320, "Cannonball throws hit a small area. Much more damage, slower attack, longer charge.",
-                    GARP_STATS[1]),
-                _up("Fist of Love", 560, "Huge damage and a bigger blast. Breaks armor and knocks Didits back (bosses barely).",
+                _up("Iron Fist", 320, "Throws hit a small area and leave a HOT CRATER that burns Didits for 3s. More damage, slower attack, longer charge.",
+                    GARP_STATS[1], ["garp_crater"]),
+                _up("Fist of Love", 560, "300% damage against BOSSES. Bigger blast, a bigger and hotter crater. Breaks armor and knocks Didits back (bosses barely).",
                     GARP_STATS[2], ["armor_breaker", "garp_knockback"]),
-                _up("Galaxy Impact", 1200, "Massive damage. Active: the next throw is a giant, long-charged mega throw.",
+                _up("Galaxy Impact", 1200, "Massive damage and the biggest crater. Active: the next throw is a giant, long-charged mega throw with a huge crater.",
                     GARP_STATS[3], ["galaxy_active"]),
             ]},
             {"name": "Johnny (Spin)", "tiers": [

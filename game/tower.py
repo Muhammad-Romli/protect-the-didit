@@ -243,7 +243,7 @@ class Tower:
         recoil = self.kick / 0.1
         weapon_first = self.aim.y < 0  # aiming up: wand goes behind the body
         melee = mark.is_mark(self)  # Mark punches: no wand
-        hold = self.kind == "fadhli" and self.charging and not fadhli.is_johnny(self)  # charging Garp holds the ball overhead
+        hold = self.kind == "fadhli" and self.charging and not fadhli.is_johnny(self) and not fadhli.is_base(self)  # charging Garp holds the ball overhead
         shx, shy = fadhli.charge_shake(self) if self.kind == "fadhli" else (0, 0)
         if not custom and weapon_first and not melee and not hold:
             self._draw_wand(surface, x, y, recoil)

@@ -159,11 +159,15 @@ t.active_cd = {}
 ok = actives.use(g, t, "golden_active")
 assert ok and t.golden_t == cfg.GOLDEN_DURATION and abs(t.golden_mult - 0.25) < 1e-9
 dmgs = []
+_orig_release = fadhli._release
+def _logged_release(tw, gm, target):      # log every throw when it is released (polling per frame could miss one)
+    n = len(gm.projectiles); _orig_release(tw, gm, target)
+    if len(gm.projectiles) > n and tw is t: dmgs.append((id(gm.projectiles[n]), gm.projectiles[n].damage))
+fadhli._release = _logged_release
 for _ in range(900):
     g.update(1 / 60)
-    for p in g.projectiles:
-        if p.bounces == 0 and id(p) not in [d[0] for d in dmgs] and p.source is t: dmgs.append((id(p), p.damage))
     if t.golden_t == 0 and len(dmgs) > 3: break
+fadhli._release = _orig_release
 vals = [d[1] for d in dmgs]
 base_d = t.stats["damage"]
 assert abs(vals[0] - base_d / 4) < 1e-6, (vals[0], base_d / 4)
@@ -219,4 +223,70 @@ print("all tiers run + draw OK")
 from game import savegame
 g = new(); t = mk(g, (0, 3)); d = savegame.snapshot(g) if hasattr(savegame, "snapshot") else None
 print("savegame hook:", "snapshot" if d is not None else "skipped (checked in test_savegame)")
+# ---- 12. (2026-11-09) base Fadhli looks like a regular tower; Garp 300% vs bosses at T3+; hot craters from tier 2
+g = new(); b = mk(g, (0, 0)); assert fadhli.is_base(b) and not fadhli.is_garp(b) and not fadhli.is_johnny(b)
+e = foe(g, 290); g.update(1 / 60)
+assert b.charging and fadhli.charge_shake(b) == (0, 0), "no shaking while the base Fadhli winds up"
+run(g, 0.5)
+assert g.projectiles or e.hp < e.max_hp
+if g.projectiles:
+    assert g.projectiles[0].arc == 0.0, "plain straight throw at base"
+assert not g.craters, "base Fadhli leaves no crater"
+assert models.weapon_image("fadhli", None, 30, False) is not None      # still throws a rock
+print("base looks regular OK")
+
+g = new(); t2 = mk(g, (4, 0)); t2.tiers = [2, 0]; t2.recompute_stats()
+t3 = mk(g, (3, 0), (700, 300)); t3.tiers = [3, 0]; t3.recompute_stats()
+t4 = mk(g, (4, 0), (900, 300)); t4.tiers = [4, 0]; t4.recompute_stats()
+assert t2.stats["damage"] < t3.stats["damage"] < t4.stats["damage"], "damage grows every tier"
+assert abs(t2.stats["damage"] - 16.0) < 1e-6 and abs(t3.stats["damage"] - 24.0) < 1e-6 and abs(t4.stats["damage"] - 36.0) < 1e-6
+assert "garp_crater" in t2.effects and "garp_crater" in t3.effects and "garp_crater" in t4.effects
+t1 = mk(g, (1, 0), (500, 500)); t1.tiers = [1, 0]; t1.recompute_stats(); assert "garp_crater" not in t1.effects
+# 300% against bosses from tier 3 only (direct hits), nothing extra against normal Didits
+def dmg_taken(tower, kind):
+    g = new(); tower.tiers = list(tower.tiers); g.towers.append(tower); e = g.spawn_enemy(kind, 100); e.hp = e.max_hp = 99999.0
+    p = Projectile(Vec(e.pos), e, 400, tower.stats["damage"], 0, 0, 0, 0, (255, 150, 60), tower); g._resolve_hit(p)
+    return e.max_hp - e.hp
+from data.enemies import ENEMIES
+boss = next(k for k, v in ENEMIES.items() if v["is_boss"] and not v.get("armor"))
+for tr, mult in ((2, 1.0), (3, 3.0), (4, 3.0)):
+    tw = Tower("fadhli", (0, 0)); tw.tiers = [tr, 0]; tw.recompute_stats()
+    n, b = dmg_taken(tw, "normal"), dmg_taken(tw, boss)
+    assert abs(n - tw.stats["damage"]) < 1e-6 and abs(b - tw.stats["damage"] * mult) < 1e-6, (tr, n, b)
+print("Garp: x3 only vs bosses from tier 3 OK", t2.stats["damage"], t3.stats["damage"], t4.stats["damage"])
+
+# a crater appears where the throw lands, grows with the tier, burns Didits inside, and disappears
+radii = []
+for tiers in ((2, 0), (3, 0), (4, 0)):
+    g = new(); t = mk(g, tiers, (330, 190)); e = foe(g, 290, hp=99999.0)
+    run(g, 3.2)
+    assert g.craters, tiers
+    c = g.craters[-1]
+    radii.append((c["radius"], c["damage"], c["total"]))
+assert radii[0][0] < radii[1][0] < radii[2][0] and radii[0][1] < radii[1][1] < radii[2][1] and radii[0][2] < radii[1][2] < radii[2][2], radii
+print("crater grows with the tier OK", radii)
+
+g = new(); t = mk(g, (2, 0), (330, 190)); t.cooldown_left = 999
+inside = foe(g, 100); outside = foe(g, 400); armored = foe(g, 101); armored.armor = 5
+crate = {"pos": Vec(inside.pos), "radius": 40, "damage": 2.0, "t": 3.0, "total": 3.0, "tick": cfg.CRATER_TICK, "mega": False, "tier": 2, "seed": 1, "born": 0.0}
+assert crate["pos"].distance_to(outside.pos) > 100 and crate["pos"].distance_to(armored.pos) < 40
+g.craters.append(crate)
+run(g, 1.1)
+assert inside.hp < inside.max_hp and outside.hp == outside.max_hp and armored.hp == armored.max_hp, "burn only inside, armor shields"
+run(g, 3.0)
+assert not g.craters, "the crater cools down and vanishes"
+print("crater burns inside only, vanishes OK")
+
+g = new(); [g.craters.append({"pos": Vec(i, 0), "radius": 30, "damage": 1.0, "t": 5.0, "total": 5.0, "tick": 0.5, "mega": False, "tier": 2, "seed": i, "born": 0.0}) for i in range(5)]
+t = mk(g, (4, 0), (330, 190)); e = foe(g, 290)
+for _ in range(40):
+    p = Projectile(Vec(e.pos), e, 400, 1.0, 30, 0, 0, 0, (255, 150, 60), t); p.arrived = True
+    g._resolve_hit(p)
+assert len(g.craters) <= cfg.CRATER_MAX, len(g.craters)
+assert len(g.craters) == cfg.CRATER_MAX, "the cap is actually reached"
+mega = Projectile(Vec(e.pos), e, 400, 1.0, 30, 0, 0, 0, (255, 150, 60), t); mega.mega = True; g.craters.clear(); g._resolve_hit(mega)
+assert g.craters and g.craters[0]["radius"] > cfg.CRATER_TIERS[4]["radius"], "mega throw = bigger crater"
+screen.fill((0, 0, 0)); g.draw()
+print("crater cap + mega crater + draw OK")
+
 print("ALL OK")

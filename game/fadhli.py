@@ -3,10 +3,14 @@
 All numbers live in data/fadhli.py. Hooks used by the rest of the game:
   Tower.__init__    -> init_tower()
   Tower.update      -> tick_tower()       (the whole attack cycle: charge -> release -> cooldown, barrage, ability timers)
-  effects.py        -> bounce(), status(), shove()   ("fadhli_bounce", "fadhli_status", "garp_knockback", on every hit)
+  effects.py        -> bounce(), status(), shove(), crater()   ("fadhli_bounce", "fadhli_status", "garp_knockback", "garp_crater", on every hit)
+  Game._step        -> update_world()     (hot craters: burn Didits, age, vanish)
   actives.py        -> start_galaxy(), start_golden()
   Tower.draw        -> draw_charge(), draw_barrage(), charge_shake()
-  Game.draw         -> draw_world() (the inner melee circle)
+  Game.draw         -> draw_world() (hot craters + the inner melee circle)
+
+Base Fadhli (no upgrades) looks and sounds like a regular tower: a short invisible wind-up, a plain rock, the generic hit
+effects. Only a Garp (path A) or Johnny (path B) gets the charge visuals, shaking, big impacts and the rest.
 
 Attack cycle: when the cooldown is over and a Didit is in range, Fadhli CHARGES (wind-up: particles are pulled in, he
 shakes, a ball grows above his head). When the charge is full the throw leaves his hand at the best target in range, and
@@ -43,6 +47,21 @@ def is_garp(t: "Tower") -> bool:
 
 def is_johnny(t: "Tower") -> bool:
     return t.kind == "fadhli" and t.tiers[1] > 0 and t.tiers[1] > t.tiers[0]
+
+
+def is_base(t: "Tower") -> bool:
+    """Fadhli without any upgrade: plain rock throws, no charge visuals, no impact show."""
+    return t.kind == "fadhli" and t.tiers[0] == 0 and t.tiers[1] == 0
+
+
+def boss_mult(p: Projectile, enemy: "Enemy") -> float:
+    """Garp tier 3+: x3 damage against bosses (direct hits and the mega throw, not the crater burn)."""
+    src = p.source
+    if src is None or src.kind != "fadhli" or p.melee or not enemy.is_boss:
+        return 1.0
+    if is_garp(src) and src.tiers[0] >= cfg.GARP_BOSS_MULT_MIN_TIER:
+        return cfg.GARP_BOSS_MULT
+    return 1.0
 
 
 def init_tower(t: "Tower") -> None:
@@ -147,6 +166,8 @@ def _release(t: "Tower", game: "Game", target: "Enemy") -> None:
         p.arc = 0.0
         if "fadhli_bounce" in t.effects:
             p.bounce_chance = cfg.BOUNCE_START_CHANCE
+    elif is_base(t):
+        p.arc = 0.0                                      # a plain straight throw, like every other tower
     else:
         p.arc = cfg.GALAXY_ARC if mega else cfg.GARP_ARC
     game.projectiles.append(p)
@@ -213,6 +234,102 @@ def shove(game: "Game", tower: "Tower", p: Projectile, victims: list) -> None:
         game.fx.knocked(e)
 
 
+# ------------------------------------------------------------------ hot craters (Garp tier 2+)
+def crater_stats(t: "Tower", mega: bool = False) -> dict | None:
+    """Radius / burn damage per tick / lifetime of the crater this Garp leaves (None below tier 2)."""
+    tier = t.tiers[0]
+    if not is_garp(t) or tier < 2:
+        return None
+    c = dict(cfg.CRATER_TIERS[min(tier, max(cfg.CRATER_TIERS))])
+    if mega:
+        c["radius"] *= cfg.CRATER_MEGA_RADIUS_MULT
+        c["damage"] *= cfg.CRATER_MEGA_DAMAGE_MULT
+        c["seconds"] *= cfg.CRATER_MEGA_SECONDS_MULT
+    return c
+
+
+def crater(game: "Game", tower: "Tower", p: Projectile) -> None:
+    """Garp tier 2+: the throw that just landed leaves a hot crater at the impact point."""
+    if p.melee:
+        return
+    c = crater_stats(tower, p.mega)
+    if c is None:
+        return
+    game.craters.append({"pos": Vec(p.pos), "radius": c["radius"], "damage": c["damage"], "t": c["seconds"],
+                         "total": c["seconds"], "tick": cfg.CRATER_TICK, "mega": p.mega, "tier": tower.tiers[0],
+                         "seed": random.randint(0, 9999), "born": game.time})
+    while len(game.craters) > cfg.CRATER_MAX:
+        game.craters.pop(0)
+    game.fx.crater_born(p.pos, c["radius"], p.mega)
+
+
+def update_world(game: "Game", dt: float) -> None:
+    """Once per simulation step: burn every Didit standing in a crater (armored Didits are shielded), age the craters."""
+    for c in list(game.craters):
+        c["t"] -= dt
+        c["tick"] -= dt
+        if c["tick"] <= 0:
+            c["tick"] += cfg.CRATER_TICK
+            for e in list(game.enemies):
+                if e.alive and e.armor <= 0 and c["pos"].distance_to(e.pos) <= c["radius"] + e.radius:
+                    game.hit_enemy(e, c["damage"], color=(255, 120, 40), source=None, quiet=True)
+        if c["t"] <= 0:
+            game.craters.remove(c)
+
+
+_CRATER_SPRITES: dict[tuple, pygame.Surface] = {}
+
+
+def _crater_sprite(r: int, seed: int) -> pygame.Surface:
+    """Scorched ground: dark soot disc, a raised rim and a few cracks (static, the glow is drawn on top)."""
+    key = (r, seed % 6)
+    if key in _CRATER_SPRITES:
+        return _CRATER_SPRITES[key]
+    w, h = 2 * r + 12, int(1.2 * r) + 12
+    surf = pygame.Surface((w, h), pygame.SRCALPHA)
+    cx, cy = w // 2, h // 2
+    rx, ry = r, int(r * 0.58)
+    pygame.draw.ellipse(surf, (22, 14, 10, 150), (cx - rx - 5, cy - ry - 3, 2 * rx + 10, 2 * ry + 7))   # soot halo
+    pygame.draw.ellipse(surf, (70, 52, 40, 255), (cx - rx, cy - ry, 2 * rx, 2 * ry))                    # raised rim
+    pygame.draw.ellipse(surf, (28, 18, 14, 255), (cx - rx + 4, cy - ry + 3, 2 * rx - 8, 2 * ry - 6))    # pit
+    rnd = random.Random(seed % 6)
+    for _ in range(7):                                                                                  # cracks
+        a = rnd.uniform(0, math.tau)
+        ln = rnd.uniform(0.7, 1.15)
+        p0 = (cx + math.cos(a) * rx * 0.25, cy + math.sin(a) * ry * 0.25)
+        p1 = (cx + math.cos(a) * rx * ln, cy + math.sin(a) * ry * ln)
+        pygame.draw.line(surf, (12, 8, 6, 255), p0, p1, 3)
+    _CRATER_SPRITES[key] = surf
+    return surf
+
+
+def _draw_craters(surface: pygame.Surface, game: "Game") -> None:
+    now = pygame.time.get_ticks() / 1000
+    for c in game.craters:
+        r = int(c["radius"])
+        x, y = int(c["pos"].x), int(c["pos"].y)
+        frac = max(0.0, c["t"] / c["total"])
+        fade = min(1.0, c["t"] / 0.9)                                    # dies out in the last 0.9 s
+        base = _crater_sprite(r, c["seed"])
+        base.set_alpha(int(255 * fade))
+        surface.blit(base, base.get_rect(center=(x, y)))
+        pulse = 0.8 + 0.2 * math.sin(now * 6 + c["seed"])
+        heat = (0.35 + 0.65 * frac) * fade * pulse                       # the lava cools down with time
+        ry = int(r * 0.58)
+        lava = pygame.Surface((2 * r + 4, 2 * ry + 4), pygame.SRCALPHA)
+        w1, h1 = int(1.0 * r), int(1.0 * ry)                            # glowing lava pool inside the dark pit
+        pygame.draw.ellipse(lava, (230, 70, 16, int(190 * heat)), (r + 2 - w1 // 2, ry + 2 - h1 // 2, w1, h1))
+        w2, h2 = int(0.5 * r), int(0.5 * ry)
+        pygame.draw.ellipse(lava, (255, 170, 50, int(210 * heat)), (r + 2 - w2 // 2, ry + 2 - h2 // 2, w2, h2))
+        surface.blit(lava, lava.get_rect(center=(x, y)))
+        q = (int(90 * heat) // 20) * 20 + 20                             # quantised, gfx.glow caches per alpha
+        g = gfx.glow(int(r * 0.9), (255, 90, 20), q)                      # soft orange heat haze (normal blend, not additive)
+        surface.blit(g, g.get_rect(center=(x, y - 4)))
+        if random.random() < 0.18 * fade:                                # embers rising
+            game.fx.vfx.burst(c["pos"] + Vec(random.uniform(-r, r) * 0.6, random.uniform(-r, r) * 0.3), (255, 160, 60),
+                              1, 22, 0.7, 3, -70)
+
+
 # ------------------------------------------------------------------- the barrage
 def _barrage(t: "Tower", game: "Game", dt: float) -> None:
     """Tusk Act 4: melee hits on every Didit inside the inner circle, at the same time as the throws."""
@@ -261,7 +378,7 @@ def charge_frac(t: "Tower") -> float:
 
 def charge_shake(t: "Tower") -> tuple[int, int]:
     """Garp trembles while he charges (more with every bit of charge)."""
-    if not getattr(t, "charging", False) or is_johnny(t):
+    if not getattr(t, "charging", False) or is_johnny(t) or is_base(t):
         return 0, 0
     a = 0.4 + 2.2 * charge_frac(t) * (1.6 if t.charge_mega else 1.0)
     return round(random.uniform(-a, a)), round(random.uniform(-a * 0.5, a * 0.5))
@@ -270,7 +387,7 @@ def charge_shake(t: "Tower") -> tuple[int, int]:
 def draw_charge(surface: pygame.Surface, t: "Tower", x: int, y: int) -> None:
     """Charging visuals: a ball growing above Garp's head with a heat glow, ground cracks and a shrinking ring;
     Johnny: a small gold spin ring at his hand and a stand glow."""
-    if not getattr(t, "charging", False):
+    if not getattr(t, "charging", False) or is_base(t):
         return
     f = charge_frac(t)
     mega = t.charge_mega
@@ -325,7 +442,8 @@ def draw_barrage(surface: pygame.Surface, t: "Tower", x: int, y: int) -> None:
 
 
 def draw_world(surface: pygame.Surface, game: "Game") -> None:
-    """The inner circle of a Tusk Act 4 Fadhli: the range of the melee barrage (brighter while it is hitting)."""
+    """Hot craters on the ground + the inner circle of a Tusk Act 4 Fadhli (the range of the melee barrage)."""
+    _draw_craters(surface, game)
     t0 = pygame.time.get_ticks() / 1000
     for t in game.towers:
         if t.kind != "fadhli" or not has_barrage(t):

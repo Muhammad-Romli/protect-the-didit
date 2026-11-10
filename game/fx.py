@@ -361,6 +361,9 @@ class FX:
             if random.random() < 0.6:
                 a = pygame.time.get_ticks() / 40
                 self.vfx.burst(proj.pos + pygame.Vector2(math.cos(a), math.sin(a)) * 6, (255, 220, 110), 1, 20, 0.25, 2, 0)
+        elif fadhli.is_base(src):          # plain rock: the same little trail as every other tower
+            if random.random() < 0.7:
+                self.vfx.trail(proj.pos, proj.color)
         else:                              # smoke and embers behind the cannonball
             k = 2.0 if getattr(proj, "mega", False) else 1.0
             self.vfx.burst(proj.pos, (90, 84, 80), 1, 24 * k, 0.45 * k, 5 * k, -20)
@@ -373,6 +376,8 @@ class FX:
         from game import fadhli
         if fadhli.is_johnny(t):
             self.audio.play("steel_spin")
+        elif fadhli.is_base(t):
+            return                         # base Fadhli: a quiet, invisible wind-up
         else:
             self.audio.play("galaxy_charge" if t.charge_mega else "garp_charge")
             self.vfx.ring(t.pos, 6, 36, 0.25, (255, 255, 255), 2)
@@ -380,6 +385,8 @@ class FX:
     def fadhli_charging(self, t, f: float) -> None:
         """Called every 0.05s while charging: particles are pulled into him, dust rises, the charge builds."""
         from game import fadhli
+        if fadhli.is_base(t):
+            return
         if fadhli.is_johnny(t):
             hand = t.pos + pygame.Vector2(14 if t.aim.x >= 0 else -14, -14)
             self.vfx.suck(hand, 20 + 10 * (1 - f), (190, 230, 255), 2, 0.12, 2)
@@ -403,6 +410,11 @@ class FX:
             self.vfx.pop(tip, 24, (190, 230, 255), 0.1)
             self.vfx.ring(tip, 4, 18, 0.12, (255, 226, 120), 2)
             return
+        if fadhli.is_base(t):              # regular throw: the same small puff and ring every tower has
+            self.audio.play("shoot_jalu")
+            self.vfx.ring(t.pos, 10, 26, 0.12, (255, 255, 255), 2)
+            self.muzzle(t, tip)
+            return
         self.audio.play("garp_throw")
         r = 120 if mega else 62
         self.vfx.ring(t.pos, 8, r, 0.35 if mega else 0.25, (255, 255, 255), 5 if mega else 4)
@@ -422,7 +434,7 @@ class FX:
         if src is None or src.kind != "fadhli":
             return
         from game import fadhli
-        if fadhli.is_johnny(src):
+        if fadhli.is_johnny(src) or fadhli.is_base(src):
             return
         mega = getattr(p, "mega", False)
         big = 1.0 + 0.25 * src.tiers[0]
@@ -463,6 +475,18 @@ class FX:
             self.vfx.burst(pos, (150, 120, 90), 4, 120, 0.4, 4, 160)
         else:
             self.vfx.burst(pos, (170, 150, 120), 4, 100, 0.3, 3, 60)
+
+    def crater_born(self, pos, radius: float, mega: bool) -> None:
+        """A hot crater opens where the throw landed: lava flash, a ring of heat, flying rocks."""
+        self.vfx.ring(pos, radius * 0.3, radius * 1.05, 0.45, (255, 120, 40), 4)
+        self.vfx.pop(pos, radius * 0.9, (255, 140, 50), 0.25)
+        self.vfx.burst(pos, (255, 170, 60), 6 + int(radius / 10), 120 + radius, 0.55, 4, -30)
+        if mega:
+            self.vfx.comic(pos + pygame.Vector2(0, -radius * 0.7), "MAGMA!", (255, 150, 60), 34, 0.9)
+
+    def burn(self, enemy) -> None:
+        """One crater burn tick: a little flame on the Didit (quiet on purpose, it repeats every 0.5s)."""
+        self.vfx.burst(enemy.pos + pygame.Vector2(0, -4), (255, 140, 50), 2, 50, 0.35, 3, -80)
 
     def fadhli_bounce(self, a, b, n: int) -> None:
         self.audio.play("bounce")

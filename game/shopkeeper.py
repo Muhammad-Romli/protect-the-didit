@@ -1,5 +1,6 @@
-"""A'yun, the shopkeeper: a procedural character in the same style as the towers (game/models.py Ctx), plus the little
-wooden stall she/he stands behind. Art only: no logic. Change the colours in STYLE to restyle A'yun.
+"""A'yun, the shopkeeper: a young woman with fair skin who wears a hijab, drawn procedurally in the same style as the
+towers (game/models.py Ctx), plus the little wooden stall she stands behind. Art only: no logic.
+Change the colours in STYLE to restyle A'yun.
 """
 from __future__ import annotations
 
@@ -9,8 +10,8 @@ import pygame
 
 from game import gfx, models
 
-STYLE = {"shirt": (250, 236, 200), "apron": (40, 150, 150), "hair": (44, 30, 28), "skin": (190, 134, 92),
-         "cap": (214, 90, 70), "cap_edge": (150, 50, 40)}
+STYLE = {"shirt": (250, 236, 200), "apron": (40, 150, 150), "skin": (248, 226, 208),
+         "hijab": (176, 70, 100), "hijab_edge": (116, 38, 64), "pin": (255, 200, 60)}
 _CACHE: dict[tuple, pygame.Surface] = {}
 
 
@@ -36,20 +37,25 @@ def ayun_sprite(radius: float) -> pygame.Surface:
         c.sph(0.24, st["skin"], dx, -0.48, 0.6)
     c.sph(0.17, (255, 190, 40), 0.66, -0.44, 0.9)                  # coin in the right hand
     c.circle((200, 120, 10), 0.66, -0.44, 0.1, 0.03)
-    c.sph(0.66, st["skin"], 0, -1.32)                             # head
-    hair = gfx.sphere(0.68 * r_(radius), st["hair"], shine=0.7)
-    c.put(models._cut_below(hair, int(hair.get_height() * 0.5)), 0, -1.46)
-    for dx in (-0.24, 0.24):                                      # eyes + brows
-        c.sph(0.085, (22, 18, 26), dx, -1.28, 1.3)
-        c.line((50, 34, 30), (dx - 0.1, -1.46), (dx + 0.1, -1.5), 0.04)
-    for dx in (-0.4, 0.4):                                        # cheeks
-        c.circle((226, 120, 110), dx, -1.14, 0.1)
-    pygame.draw.arc(cv, (150, 60, 60), (*P(-0.22, -1.2), 0.44 * u, 0.3 * u), math.pi * 1.1, math.pi * 1.9, max(2, int(0.05 * u)))
-    # flat merchant cap with a coin badge
-    cap = gfx.sphere(0.7 * r_(radius), st["cap"], shine=0.8)
-    c.put(models._cut_below(cap, int(cap.get_height() * 0.44)), 0, -1.7)
-    c.ell(1.5, 0.22, st["cap_edge"], 0, -1.7, shine=0.4)
-    c.sph(0.13, (255, 200, 60), 0, -1.86, 0.9)
+    # hijab, back layer: a soft drape over the shoulders and chest that hides the neck (a modest long front)
+    c.put(gfx.ellipsoid(int(1.5 * radius), int(1.0 * radius), st["hijab"]), 0, -0.98)
+    c.put(gfx.ellipsoid(int(1.34 * radius), int(0.9 * radius), st["hijab"]), 0, -0.96)
+    c.sph(0.8, st["hijab"], 0, -1.34)                              # the cloth framing the head (sides and top)
+    c.sph(0.62, st["skin"], 0, -1.3)                               # face (round, fair skin)
+    for dx in (-0.24, 0.24):                                      # eyes + soft brows + lashes
+        c.sph(0.085, (22, 18, 26), dx, -1.26, 1.3)
+        c.line((92, 62, 52), (dx - 0.1, -1.42), (dx + 0.1, -1.44), 0.035)
+        c.line((22, 18, 26), (dx + (0.07 if dx > 0 else -0.07), -1.3), (dx + (0.14 if dx > 0 else -0.14), -1.34), 0.03)
+    for dx in (-0.36, 0.36):                                      # cheeks (a bit pinker on fair skin)
+        c.circle((246, 150, 150), dx, -1.12, 0.1)
+    pygame.draw.arc(cv, (190, 80, 90), (*P(-0.18, -1.18), 0.36 * u, 0.26 * u), math.pi * 1.1, math.pi * 1.9, max(2, int(0.05 * u)))
+    # the front band of the hijab over the forehead, with the shaded edge framing the face, and a little pin
+    top = gfx.sphere(0.72 * radius, st["hijab"], shine=0.8)
+    c.put(models._cut_below(top, int(top.get_height() * 0.4)), 0, -1.52)
+    c.lines(st["hijab_edge"], [(-0.56, -1.5), (-0.4, -1.62), (0, -1.68), (0.4, -1.62), (0.56, -1.5)], 0.05)
+    for sx in (-1, 1):
+        c.line(st["hijab_edge"], (sx * 0.58, -1.5), (sx * 0.62, -1.04), 0.05)
+    c.sph(0.1, st["pin"], 0.52, -0.9, 0.9)
     img = gfx.downscale(cv, S)
     _CACHE[key] = img
     return img

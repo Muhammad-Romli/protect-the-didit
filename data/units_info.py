@@ -21,7 +21,7 @@ Ability DiditCode (preparation): fix a code bug for money.",
              "rule": "Bima uses ONE path only."},
     "fadhli": {"role": "Thrower",
                "blurb": "Throws heavy things SLOWLY, and every throw charges up first. Garp: giant cannonballs with splash, "
-                        "armor break and knockback. Johnny: steel balls that bounce, spin Didits in a tornado and "
+                        "hot craters that burn Didits (from tier 2), 300% damage to bosses from tier 3, armor break and knockback. Johnny: steel balls that bounce, spin Didits in a tornado and "
                         "call Tusk.",
                "rule": "Each Fadhli follows ONE path (no cross-pathing)."},
 }

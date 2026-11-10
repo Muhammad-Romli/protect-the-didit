@@ -123,6 +123,7 @@ class Game:
         self.cubes: list = []           # Bima cubes (block the path)
         self.sweeps: list = []          # Mark's running sweeps (see game/mark.py)
         self.zones: list = []           # Bima sphere trap zones
+        self.craters: list = []         # Garp's hot craters (see game/fadhli.py)
         self.shield, self.shield_t = 0.0, 0.0   # base shield (Bima sphere)
         self.hitstop, self.last_hitstop = 0.0, -9.0
         self.aiming = None              # (tower, ability id) while waiting for a map click
@@ -658,7 +659,7 @@ class Game:
 
     def hit_enemy(self, enemy: Enemy, damage: float, slow: float = 0.0,
                   slow_duration: float = 0.0, color=(255, 240, 180), source: Tower | None = None,
-                  armor_hits: int | None = None) -> None:
+                  armor_hits: int | None = None, quiet: bool = False) -> None:
         """Single place where tower damage reaches an enemy (applies debuffs + slow).
         Armored enemies only lose armor: 1 per hit, 3 per hit from a tower with armor_breaker."""
         if slow > 0:
@@ -668,6 +669,9 @@ class Game:
             self.fx.armor_hit(enemy, enemy.break_armor(hits), hits)
             return
         enemy.take_damage(damage * self.damage_multiplier(enemy))
+        if quiet:   # damage over time (crater burn): a small flame, no hit sound / comic words every tick
+            self.fx.burn(enemy)
+            return
         self.fx.hit(enemy, color, source)
 
     # --------------------------------------------------------------- update
@@ -705,6 +709,7 @@ class Game:
             d[1]()
         bima.update_world(self, dt)
         mark.update_world(self, dt)
+        fadhli.update_world(self, dt)
         if self.phase == Phase.PREP:
             self.prep_time += dt
             self._tick_activities(dt)
@@ -791,7 +796,7 @@ class Game:
             return
         self.fx.projectile_hit(p, victims)
         for e in victims:
-            self.hit_enemy(e, p.damage, p.slow, p.slow_duration, p.color, p.source)
+            self.hit_enemy(e, p.damage * fadhli.boss_mult(p, e), p.slow, p.slow_duration, p.color, p.source)
         if p.aoe_radius > 0:
             self.fx.aoe(p.pos, p.aoe_radius, p.color)
         self.add_money(p.money_on_hit)

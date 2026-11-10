@@ -8,10 +8,11 @@ Looks
 A tower's `look` is None (base) or (path, tier) from `look_of(kind, tiers)`: path 0 = A, 1 = B, tier 1..4.
   jalu   A = Mark (blue/yellow hero suit, mask, cape at 4)      B = Loki (green suit, gold horns, scepter, loom)
   romli  A = Business (shirt+tie -> suit -> gold -> crown)       B = Programmer (hoodie, headphones, code screens)
-  zizi   A = Recitation (shawl, halo)                            B = Sloth (pajamas, sleepy eyes, pillow)
+  zizi   A = Recitation (shawl, halo, book)                      B = Sloth (pajamas, sleepy eyes, pillow)    base = no held weapon
   bima   A = Graph (pencil, lab coat, hologram wave)             B = Geometry (orbiting shapes, laurel)
-  fadhli A = Garp (white marine coat draped over the shoulders, iron gloves, gold trim)
-         B = Johnny Joestar (feathered hat, wide-collar jacket, spiral belt) + the Tusk stand (Act 1 / 3 / 4)
+  fadhli A = Garp (grey spiky hair, bushy brows, stubbly jaw, broad shoulders, white marine coat draped over them,
+                   iron gloves, gold trim)
+         B = Johnny Joestar (blond bangs, pale eyes, feathered hat, wide-collar jacket, spiral belt) + the Tusk stand (Act 1 / 3 / 4)
   fused_jalu_romli  (fusion tower, not in the game yet): vest + headset.
 
 Public API: look_of, costume, draw_hair, weapon_image, projectile, prop, draw_companion, mark_runner.
@@ -337,11 +338,29 @@ def _garp(tier: int) -> dict:
             for sx in (-1, 1):
                 c.sph(0.2, gold, sx * 0.7, -1.16, 0.8)                                   # gold epaulettes
 
+    def body_broad(c: Ctx) -> None:       # Garp is a big, heavy-shouldered old marine: wider than the other makers
+        for sx in (-1, 1):
+            c.sph(0.34, navy, sx * 0.62, -0.88, 0.6)
+        body(c)
+
+    def face(c: Ctx) -> None:             # grey bushy eyebrows, a broad nose, a stubbly square jaw and a stern scowl
+        brow = (176, 178, 190)
+        for sx in (-1, 1):
+            c.line((70, 70, 80), (sx * 0.05, -1.43), (sx * 0.46, -1.52), 0.15)        # outline of the thick brow
+            c.line(brow, (sx * 0.07, -1.44), (sx * 0.44, -1.52), 0.10)
+        c.sph(0.1, (150, 98, 66), 0, -1.16, 0.5)                                       # broad nose
+        for i in range(11):                                                            # grey stubble along the jaw
+            a = math.pi * (0.12 + 0.76 * i / 10)
+            c.circle((190, 192, 202), 0.5 * math.cos(a), -1.3 + 0.62 * math.sin(a), 0.025)
+        c.line((60, 38, 30), (-0.19, -1.02), (0.19, -1.02), 0.05)                      # firm mouth line (over the smile)
+        c.line((150, 98, 66), (-0.5, -1.0), (-0.44, -0.84), 0.05)                      # square jaw hint
+        c.line((150, 98, 66), (0.5, -1.0), (0.44, -0.84), 0.05)
+
     iron = (126, 134, 154)
-    style = {"shirt": navy, "shoes": (36, 36, 44)}
+    style = {"shirt": navy, "shoes": (36, 36, 44), "hair": (206, 208, 218)}              # grey hair
     if tier >= 2:
         style["glove"] = iron                                                             # "Iron Fist" gauntlets
-    return {"style": style, "back": back, "body": body}
+    return {"style": style, "back": back, "body": body_broad, "face": face, "hair": "garp"}
 
 
 # ---- Fadhli path B: Johnny Joestar (approximate: feathered hat, wide pointed collar, spiral belt buckle)
@@ -374,7 +393,15 @@ def _johnny(tier: int) -> dict:
         c.poly((255, 150, 176), [(0.38, -1.98), (0.62, -2.34), (0.82, -2.7), (0.68, -2.3), (0.52, -1.96)], (170, 70, 96), 0.02)
         c.line((255, 210, 220), (0.42, -2.0), (0.8, -2.66), 0.025)
 
-    return {"style": {"shirt": (236, 236, 226), "shoes": (60, 44, 34), "glove": (60, 44, 34)}, "body": body, "front": front}
+    def face(c: Ctx) -> None:             # pale blue eyes with a determined brow
+        for dx in (-0.24, 0.24):
+            c.sph(0.1, (150, 200, 236), dx, -1.28, 1.2)
+            c.sph(0.05, (22, 18, 26), dx, -1.28, 1.3)
+        for sx in (-1, 1):
+            c.line((120, 90, 40), (sx * 0.1, -1.44), (sx * 0.4, -1.47), 0.05)
+
+    return {"style": {"shirt": (236, 236, 226), "shoes": (60, 44, 34), "glove": (60, 44, 34), "hair": (222, 190, 112)},
+            "body": body, "face": face, "front": front, "hair": "johnny"}
 
 
 # ---- Fusion
@@ -425,6 +452,23 @@ def draw_hair(c: Ctx, kind: str, cos: dict) -> None:
         c.poly(hair, [(-0.52, -1.66), (0.34, -1.54), (0.5, -1.66), (0.1, -1.78)])     # short side-swept fringe
         for sx in (-1, 1):                                                    # sideburns, above the ears
             c.ell(0.1, 0.2, hair, sx * 0.62, -1.36, shine=0.5)
+        return
+    if kind == "fadhli" and cos.get("hair") == "garp":                         # Garp: short, thick, spiky grey hair
+        cap = gfx.sphere(0.70 * r, hair, shine=0.8)
+        c.put(_cut_below(cap, int(cap.get_height() * 0.48)), 0, -1.48)
+        for x, h in ((-0.52, 0.22), (-0.30, 0.34), (-0.06, 0.28), (0.18, 0.36), (0.42, 0.28), (0.58, 0.18)):
+            c.poly(hair, [(x - 0.13, -1.8), (x + 0.02, -1.8 - h - 0.06), (x + 0.13, -1.8)])
+        c.poly(gfx.shade(hair, 0.85), [(-0.56, -1.62), (0.5, -1.6), (0.3, -1.74), (-0.3, -1.74)])   # blunt, low fringe
+        for sx in (-1, 1):
+            c.ell(0.12, 0.26, hair, sx * 0.63, -1.36, shine=0.5)                                      # thick sideburns
+        return
+    if kind == "fadhli" and cos.get("hair") == "johnny":                      # Johnny: blond, bangs falling out of the cap
+        cap = gfx.sphere(0.69 * r, hair, shine=0.9)
+        c.put(_cut_below(cap, int(cap.get_height() * 0.5)), 0, -1.46)
+        for x, y in ((-0.44, -1.6), (-0.2, -1.64), (0.06, -1.62), (0.3, -1.6)):
+            c.poly(hair, [(x - 0.1, y - 0.08), (x + 0.1, y - 0.08), (x + 0.02, y + 0.2)])           # bangs
+        for sx in (-1, 1):
+            c.ell(0.1, 0.24, hair, sx * 0.63, -1.34, shine=0.6)
         return
     if kind == "fadhli":                                                      # short dark hair with a side fringe
         cap = gfx.sphere(0.69 * r, hair, shine=0.7)
@@ -512,14 +556,8 @@ def _weapon_surface(kind: str, look) -> pygame.Surface | None:
             ball(1.6, (255, 236, 150), cx, cy, 0.6)
         for i in range(3):                                                                              # tiny moons/stars pattern
             ball(0.9, (255, 236, 150), 6 + i * 6, -3 + (i % 2) * 6, 0.4)
-    elif kind == "zizi":                 # base Zizi: prayer beads on a string, with a tassel
-        pts = [(2 + 3.7 * i, 4.5 * math.sin(i / 7 * math.pi)) for i in range(8)]
-        pygame.draw.lines(cv, (150, 110, 60), False, [X(*p) for p in pts], max(1, int(0.9 * S)))
-        for i, (x, y) in enumerate(pts):
-            ball(2.5, (240, 214, 255) if i % 2 else (200, 120, 232), x, y)
-        poly((236, 190, 70), [(29, 0), (34, -2.5), (38, 0), (34, 2.5)], GOLD_D, 0.7)
-        for k in (-2, 0, 2):
-            pygame.draw.line(cv, (236, 190, 70), X(36, 0), X(41, k * 1.4), int(1.2 * S))
+    elif kind == "zizi":                 # base Zizi: bare hands, no held weapon (removed 2026-11-09)
+        return None
     elif kind == "fadhli" and path == 0:   # Garp: a big iron cannonball
         ball(9.5, (74, 80, 98), 15, 0, 0.9)
         pygame.draw.line(cv, (200, 60, 60), X(15, -8.4), X(15, 8.4), int(1.6 * S))               # red band

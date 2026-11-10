@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-09 - Fadhli reworked, Zizi weapon removed, A'yun redrawn, God Loki doc
+- **Base Fadhli (no upgrades) now looks like a regular attack:** short invisible wind-up (0.15 s), no glow / ground cracks / shaking / big boom, straight throw (no lob), the normal muzzle puff, trail and hit effects. Numbers unchanged (5.5 damage, 1.8 s cooldown).
+- **Garp (path A) remade.** Look: grey spiky hair, thick grey eyebrows, stubbly square jaw, broader shoulders, white marine coat (approximate, from memory). Damage is now 8.5 (T1) / 16 (T2) / 24 (T3) / 36 (T4) (was 8.5 / 15.5 / 26.5 / 40.5: T2 up, T3 and T4 slightly down against normal Didits, but far higher against bosses). **From T3, throws deal 300% damage to bosses** (`GARP_BOSS_MULT`, also the mega throw): T3 72, T4 108 vs a boss. Galaxy Impact = 5x damage (180, x3 vs a boss). All numbers: `data/fadhli.py`.
+- **Hot crater (Garp T2+):** every landing throw leaves a crater that burns Didits inside every 0.5 s. T2: radius 34, 1.2 per tick, 3 s. T3: 50, 3.0, 4 s. T4: 68, 5.5, 5 s. Mega throw: x1.8 radius, x2 damage, x1.5 time. Armored Didits are not burned. Max 14 craters. Code `fadhli.crater / update_world / _draw_craters`, effect `garp_crater`, `Game.craters`, `Game.hit_enemy(quiet=True)`, `fx.crater_born / burn`.
+- **Johnny (path B) look:** blond bangs under the hat, pale blue eyes. Stats unchanged.
+- **Zizi:** the prayer-bead weapon at level 0 is gone (bare hands). Upgraded Zizi keeps the book / pillow.
+- **A'yun (shop) is now a woman:** fair skin, a rose-coloured hijab with a pin, no cap. Art only (`game/shopkeeper.py`).
+- New tool: `tools/convert_video.py` (clip -> JPG frames + OGG audio + info.json, needs ffmpeg) for the God Loki minigame clip.
+- New doc: `docs/MERGE_AND_GOD_TIER.md`: design (NOT implemented) for merging towers (Loki+Loki = God Loki with a button-smash minigame over `assets/loki_larp.mp4`, Zizi good+bad, Romli Business+Bima = Engineer Corp) plus the Loki reference as an appendix.
+- Tests: `tests/test_fadhli.py` (base looks regular, x3 vs bosses at T3+, crater grows / burns / vanishes / cap / mega), `tests/test_editing_balance.py` (base Zizi has no weapon). `tests/test_money_fx_assets.py` already failed before this change (needs `assets/sprites/towers/`, missing in the slim zip).
+
 ## 2026-11-08 (later) - Fadhli, the thrower (new tower, 5th in the shop, key 5)
 - **Fadhli** ($300) throws heavy objects SLOWLY. Every throw has a CHARGE (wind-up) first; charge + cooldown = his attack cycle. One path per unit (like Jalu). Code `game/fadhli.py`, ALL numbers `data/fadhli.py`, upgrades/prices `data/towers.py`. Upgrade and move names are placeholders (rename in `data/towers.py`).
 - **Path A - Garp (power):** looks like Garp's white marine coat draped over the shoulders (clothes only), iron gauntlets at T2, gold trim T3, epaulettes T4. Cannonball lobbed in an arc. Charge grows each tier (0.45 -> 0.95 s): heat glow, particles pulled in, ground cracks, he shakes, a ball swells above his head, rising rumble. Release: shockwave rings, rubble, screen shake, deep boom. T2 splash, T3 armor break + knockback, T4 active **Galaxy Impact** (next throw: x5 damage, bigger splash, 1.7x charge, huge shake/flash).

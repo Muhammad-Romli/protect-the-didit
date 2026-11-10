@@ -112,6 +112,13 @@ def _garp_knockback(tower, game, hook, **ctx):
     return None
 
 
+def _garp_crater(tower, game, hook, **ctx):
+    """Garp tier 2+: the landing throw leaves a hot crater (see game/fadhli.py)."""
+    if hook == "hit":
+        from game import fadhli
+        fadhli.crater(game, tower, ctx["proj"])
+
+
 def _geo_effects(tower, game, hook, **ctx):
     """Bima Geometry Lv2+: shape stacks. The hit target gets its shape slot filled (see game/bima.py)."""
     if hook != "hit":
@@ -186,6 +193,7 @@ EFFECTS: dict[str, Callable] = {
     "fadhli_bounce": _fadhli_bounce,
     "fadhli_status": _fadhli_status,
     "garp_knockback": _garp_knockback,
+    "garp_crater": _garp_crater,
     "mark_knockback": _mark_knockback,
     "time_push": _time_push,
     "speed_against_time": _speed_against_time,

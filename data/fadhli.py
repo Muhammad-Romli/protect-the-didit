@@ -5,7 +5,9 @@ counts as part of his attack cycle (cycle = charge + cooldown) and is sped up by
 Each Fadhli unit follows ONE path (like Jalu).
 
   Path A = Garp (power): Garp's marine coat. Slow, heavy cannonball throws with a long charge, splash damage,
-           armor breaking and knockback. Tier 4 ability "Galaxy Impact" (next throw is a mega throw).
+           armor breaking and knockback. From tier 2 every landing throw leaves a HOT CRATER that burns Didits inside
+           (bigger + hotter with every tier). Tier 3 "Fist of Love" deals 300% damage to BOSSES.
+           Tier 4 ability "Galaxy Impact" (next throw is a mega throw).
   Path B = Johnny (spin): Johnny Joestar + Tusk. Fast steel balls that bounce between Didits and spin them in a
            tornado. Tier 4: Tusk Act 4 barrage (melee) + ability "Golden Ratio".
 
@@ -14,7 +16,8 @@ Names of upgrades / moves are placeholders the author can rename in data/towers.
 
 # -------------------------------------------------------------------------------- charge (wind-up)
 # Seconds of charging before the throw leaves his hand. Garp's grows with every tier (more power = longer charge).
-GARP_CHARGE = [0.35, 0.45, 0.60, 0.80, 0.95]      # index = path A tier (0 = base Fadhli)
+# Index 0 = base Fadhli: a short, INVISIBLE wind-up (no glow, cracks or shaking; it throws like a regular tower).
+GARP_CHARGE = [0.15, 0.45, 0.60, 0.80, 0.95]      # index = path A tier
 JOHNNY_CHARGE = 0.12                               # Johnny barely winds up
 
 # ------------------------------------------------------------------------------ path A: Garp (power)
@@ -26,7 +29,7 @@ GARP_PROJ_SCALE = 1.0             # sprite scale of the cannonball
 
 GALAXY_COOLDOWN = 45.0            # seconds, starts when the ability is used
 GALAXY_WINDOW = 12.0              # seconds the mega throw stays ready (it is lost if nothing is thrown)
-GALAXY_DAMAGE_MULT = 5.0          # x Fadhli's damage for the mega throw
+GALAXY_DAMAGE_MULT = 5.0          # x Fadhli's damage for the mega throw (T4 damage 36 -> 180, x3 more vs a boss)
 GALAXY_AOE_MULT = 2.2             # x splash radius
 GALAXY_AOE_MIN = 90               # px: minimum splash radius of the mega throw
 GALAXY_CHARGE_MULT = 1.7          # the mega throw charges this much longer
@@ -63,12 +66,32 @@ GOLDEN_ATTACK_SPEED = 2.0         # attack-speed multiplier while Golden Ratio r
 GOLDEN_MAX_MULT = 100.0           # safety cap on the multiplier (x Fadhli's damage); 5 s of throws stays far below it
 
 # Stat changes the tiers give (read by data/towers.py).
+# Garp's damage: base 5.5 -> T1 +3.0 (8.5) -> T2 +7.5 (16.0) -> T3 +8.0 (24.0) -> T4 +12.0 (36.0).
+# Tier 3+ ("Fist of Love") ALSO deals 300% damage to BOSSES (GARP_BOSS_MULT), e.g. T3 24 -> 72, T4 36 -> 108.
+FADHLI_BASE_DAMAGE = 5.5
+GARP_BOSS_MULT = 3.0              # x damage against bosses, from Garp tier 3 (also applies to the Galaxy Impact mega throw)
+GARP_BOSS_MULT_MIN_TIER = 3
 GARP_STATS = [
     {"damage": 3.0, "range": 10},                                        # T1 Marine coat
-    {"damage": 7.0, "cooldown": 0.2, "aoe_radius": 36},                  # T2 Iron Fist
-    {"damage": 11.0, "cooldown": 0.1, "aoe_radius": 18},                 # T3 Fist of Love
-    {"damage": 14.0, "aoe_radius": 12, "range": 15},                     # T4 Galaxy Impact
+    {"damage": 7.5, "cooldown": 0.2, "aoe_radius": 36},                  # T2 Iron Fist (+ crater)
+    {"damage": 8.0, "cooldown": 0.1, "aoe_radius": 18},                  # T3 Fist of Love (x3 vs bosses)
+    {"damage": 12.0, "aoe_radius": 12, "range": 15},                     # T4 Galaxy Impact
 ]
+
+# ------------------------------------------------------------ hot crater (Garp tier 2+)
+# Every Garp throw that lands leaves a crater at the impact point. Didits standing in it are burned every CRATER_TICK
+# seconds. Radius, burn damage per tick and lifetime grow with the tier. Armored Didits are not burned (the armor shields them).
+CRATER_TICK = 0.5
+CRATER_TIERS = {                      # path A tier -> crater
+    2: {"radius": 34, "damage": 1.2, "seconds": 3.0},
+    3: {"radius": 50, "damage": 3.0, "seconds": 4.0},
+    4: {"radius": 68, "damage": 5.5, "seconds": 5.0},
+}
+CRATER_MEGA_RADIUS_MULT = 1.8         # the Galaxy Impact mega throw leaves a much bigger crater
+CRATER_MEGA_DAMAGE_MULT = 2.0
+CRATER_MEGA_SECONDS_MULT = 1.5
+CRATER_MAX = 14                       # oldest craters vanish first (performance + balance)
+
 JOHNNY_STATS = [
     {"cooldown": -0.7},                                                  # T1 Spin practice (cheap, faster)
     {"damage": 1.0},                                                     # T2 Tusk Act 1 (+ bounce)
