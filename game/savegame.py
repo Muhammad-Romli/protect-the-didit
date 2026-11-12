@@ -11,6 +11,7 @@ import json
 import os
 
 from data.activities import ACTIVITIES, STACKS
+from data import ayun as cfg_ayun
 from data.settings import MAX_TIER
 from data.towers import TOWERS
 from game import web
@@ -81,6 +82,10 @@ def snapshot(game) -> dict:
         if t.kind == "bima":
             d["bima"] = {"formula": t.formula, "dir": t.graph_dir, "shape": t.shape_i,
                          "brain": round(t.brain, 2), "brain_init": bool(t.brain_init)}
+        if t.kind == "ayun":
+            d["ayun"] = {"stock": [{"id": it["id"], "cd": round(it["cd"], 2), "life": round(it["life"], 2)} for it in t.stock],
+                         "pity": int(t.pity), "idle": round(t.idle, 1), "auto_on": bool(t.auto_on),
+                         "auto_timer": round(t.auto_timer, 2)}
         towers.append(d)
     return {"version": VERSION, "wave": game.waves.number, "money": int(game.money),
             "knowledge": int(game.ball_knowledge), "stash_hp": int(game.stash_hp),
@@ -127,6 +132,17 @@ def restore(game, data: dict) -> bool:
                 t.shape_i = int(b.get("shape", 0)) % 3
                 t.brain = float(b.get("brain", 0.0))
                 t.brain_init = bool(b.get("brain_init", False))
+            a = d.get("ayun")
+            if kind == "ayun" and isinstance(a, dict):   # A'yun's stored gacha items (unknown ids are dropped)
+                from data.ayun import ITEMS, LIFETIME
+                t.stock = [{"id": str(it["id"]), "cd": float(it.get("cd", 0.0)),
+                            "life": float(it.get("life", LIFETIME[ITEMS[str(it["id"])]["rarity"]]))}
+                           for it in a.get("stock", []) if isinstance(it, dict) and str(it.get("id")) in ITEMS]
+                t.stock = t.stock[:cfg_ayun.STOCK_CAP.get(t.tiers[0], 0)]
+                t.pity = int(a.get("pity", 0))
+                t.idle = float(a.get("idle", 0.0))
+                t.auto_on = bool(a.get("auto_on", False)) and t.tiers[0] >= cfg_ayun.AUTO_MIN_TIER
+                t.auto_timer = float(a.get("auto_timer", cfg_ayun.AUTO_INTERVAL))
             built.append(t)
         game.reset()
         game.waves.number = wave

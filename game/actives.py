@@ -9,7 +9,7 @@ from data import fadhli as fad_cfg
 from data import mark as mark_cfg
 from data.bima import ABILITIES
 from data.settings import DIDITCODE_COOLDOWN, DIDITCODE_MAX_PER_PREP
-from game import bima, fadhli, mark
+from game import ayun, bima, fadhli, mark
 
 ACTIVES = {
     "sweep_active": {"name": "Sweep", "cooldown": mark_cfg.SWEEP_COOLDOWN, "aim": False,
@@ -31,6 +31,11 @@ ACTIVES = {
     "diditcode": {"name": "DiditCode", "cooldown": DIDITCODE_COOLDOWN, "aim": False, "phase": "prep",
                   "color": (70, 200, 110), "icon": "code",
                   "desc": "Preparation only: find and fix the bug in a code snippet to earn money."},
+    # A'yun (no cooldown: rolling costs money, auto-roll is a toggle). They work in any phase; auto-roll itself only ticks in battle.
+    "ayun_roll": {"name": "Roll", "cooldown": 0.0, "aim": False, "phase": "any", "color": (176, 70, 100), "icon": "coin",
+                  "desc": "Roll a random item with coins. Every item is an attack on its own cooldown."},
+    "ayun_auto": {"name": "Auto", "cooldown": 0.0, "aim": False, "phase": "any", "color": (60, 160, 200), "icon": "bolt",
+                  "desc": "Supply Chain: toggle auto-roll (every 15s in battle, $150/min). Steady Supply improves its odds."},
     "cube_active": {"name": "Cube", "cooldown": ABILITIES["cube_active"]["cooldown"], "aim": True,
                     "color": (255, 160, 60), "icon": "cube", "desc": "Click the path: a cube blocks enemies and hurts them."},
     "pyramid_active": {"name": "Pyramid", "cooldown": ABILITIES["pyramid_active"]["cooldown"], "aim": False,
@@ -49,7 +54,8 @@ def actives_of(tower) -> list[str]:
 
 def phase_ok(game, aid: str) -> bool:
     """Most abilities work in battle only; DiditCode works in preparation only."""
-    return game.phase.value == ACTIVES[aid].get("phase", "battle").replace("prep", "preparation")
+    want = ACTIVES[aid].get("phase", "battle")
+    return want == "any" or game.phase.value == want.replace("prep", "preparation")
 
 
 def can_use(game, tower, aid: str) -> tuple[bool, str]:
@@ -78,6 +84,10 @@ def use(game, tower, aid: str, pos=None) -> bool:
     if aid == "diditcode":
         game.open_code(tower)   # the cooldown starts now (a free cancel refunds it)
         return True
+    if aid == "ayun_roll":
+        return ayun.roll(game, tower)
+    if aid == "ayun_auto":
+        return ayun.toggle_auto(game, tower)
     if aid == "sweep_active":
         fired = mark.start_sweep(game, tower)
     elif aid == "galaxy_active":

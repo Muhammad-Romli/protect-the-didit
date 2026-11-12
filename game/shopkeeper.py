@@ -23,9 +23,17 @@ def ayun_sprite(radius: float) -> pygame.Surface:
     S = gfx.SS
     u = radius * S
     cv = gfx.blank(int(3.0 * u), int(4.4 * u))
-    st = dict(STYLE)
-    c = models.Ctx(cv, radius, st)
-    P = c.P
+    draw_figure(models.Ctx(cv, radius, dict(STYLE)), radius)
+    img = gfx.downscale(cv, S)
+    _CACHE[key] = img
+    return img
+
+
+def draw_figure(c, radius: float) -> None:
+    """Draw A'yun onto a models.Ctx (origin = her feet). Shared by the shop sprite (above) and her tower sprite
+    (game/sprites_proc.py draws it on top of the pedestal)."""
+    st = STYLE
+    cv, u, P = c.cv, c.u, c.P
     for dx in (-0.30, 0.30):                                      # shoes
         c.sph(0.2, (60, 44, 40), dx, 0.12, 0.5)
     c.put(gfx.ellipsoid(int(1.2 * radius), int(1.32 * radius), st["shirt"]), 0, -0.52)      # shirt
@@ -56,9 +64,6 @@ def ayun_sprite(radius: float) -> pygame.Surface:
     for sx in (-1, 1):
         c.line(st["hijab_edge"], (sx * 0.58, -1.5), (sx * 0.62, -1.04), 0.05)
     c.sph(0.1, st["pin"], 0.52, -0.9, 0.9)
-    img = gfx.downscale(cv, S)
-    _CACHE[key] = img
-    return img
 
 
 def r_(radius: float) -> float:

@@ -27,7 +27,7 @@ def run(g, seconds, dt=1 / 60):
     for _ in range(round(seconds / dt)): g.update(dt)
 
 # ---- 1. data: both paths, prices, effects, order
-assert "fadhli" in TOWER_ORDER and len(TOWER_ORDER) == 5
+assert "fadhli" in TOWER_ORDER and len(TOWER_ORDER) == 6   # 6 since A'yun
 names = [p["name"] for p in TOWERS["fadhli"]["paths"]]
 assert names == ["Garp (Power)", "Johnny (Spin)"], names
 jt = TOWERS["fadhli"]["paths"][1]["tiers"]

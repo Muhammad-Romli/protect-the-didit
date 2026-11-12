@@ -142,6 +142,9 @@ def _arp(notes, wave="square", dur=0.07, last=0.2, vol=0.3) -> Samples:
 SOUNDS: dict[str, tuple[Callable[[float], Samples], int, float, float]] = {
     "shoot_jalu": (lambda p: mix(tone(900 * p, 350 * p, 0.09, "square", 0.25, 3), noise_burst(0.05, 0.12, 3, 0.3)), 3, 0.04, 0.5),
     "shoot_romli": (lambda p: seq(tone(1400 * p, 1400 * p, 0.03, "square", 0.2, 1), tone(1000 * p, 1000 * p, 0.05, "square", 0.2, 2)), 3, 0.05, 0.5),
+    "shoot_ayun": (lambda p: seq(tone(1750 * p, 1750 * p, 0.03, "square", 0.18, 1), tone(1250 * p, 1250 * p, 0.05, "square", 0.18, 2)), 3, 0.05, 0.5),
+    "gacha_roll": (lambda p: seq(tone(600, 600, 0.04, "square", 0.2, 1), tone(800, 800, 0.04, "square", 0.2, 1), tone(1000, 1000, 0.04, "square", 0.2, 1), tone(1300, 1300, 0.08, "square", 0.22, 2)), 1, 0.08, 0.6),
+    "gacha_rare": (lambda p: _arp([659, 784, 988, 1319, 1568]), 1, 0.2, 0.7),
     "shoot_zizi": (lambda p: mix(tone(660 * p, 660 * p, 0.35, "sine", 0.35, 3), tone(990 * p, 990 * p, 0.3, "sine", 0.2, 3)), 3, 0.08, 0.5),
     "hit": (lambda p: mix(noise_burst(0.05, 0.35, 3, 0.4), tone(220 * p, 120 * p, 0.06, "sine", 0.5, 3)), 3, 0.05, 0.5),
     "pop": (lambda p: mix(tone(350 * p, 900 * p, 0.1, "sine", 0.6, 2.2), noise_burst(0.03, 0.15, 3)), 3, 0.035, 0.7),

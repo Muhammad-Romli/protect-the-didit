@@ -323,6 +323,7 @@ TOWER_STYLE = {
     "zizi": {"shirt": (176, 100, 214), "hair": (70, 40, 120), "skin": (238, 196, 156)},
     "bima": {"shirt": (255, 160, 70), "hair": (60, 36, 24), "skin": (176, 120, 82)},
     "fadhli": {"shirt": (110, 140, 190), "hair": (34, 28, 30), "skin": (172, 118, 80)},
+    "ayun": {"shirt": (250, 236, 200), "hair": (116, 38, 64), "skin": (248, 226, 208)},   # drawn by game/shopkeeper.py (hijab)
     "fused_jalu_romli": {"shirt": (46, 168, 176), "hair": (46, 34, 56), "skin": (176, 120, 82)},
 }
 
@@ -350,6 +351,12 @@ def tower_sprite(kind: str, radius: float, color, look=None) -> pygame.Surface:
     pygame.draw.ellipse(cv, (206, 200, 188), (*P(-1.2, -0.30), 2.4 * u, 1.10 * u))
     pygame.draw.ellipse(cv, (176, 170, 158), (*P(-1.0, -0.20), 2.0 * u, 0.90 * u))
     pygame.draw.ellipse(cv, (96, 90, 84), (*P(-1.2, -0.30), 2.4 * u, 1.10 * u), max(2, int(0.05 * u)))
+    if kind == "ayun":   # the shopkeeper (hijab, apron, coin) stands on the pedestal: see game/shopkeeper.py
+        from game import shopkeeper
+        shopkeeper.draw_figure(c, radius)
+        img = gfx.downscale(cv, S)
+        _CACHE[key] = img
+        return img
     if cos.get("back"):  # cape, halo...
         cos["back"](c)
     # body (shirt) with shoes

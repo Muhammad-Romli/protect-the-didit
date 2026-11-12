@@ -21,7 +21,7 @@ from data.towers import TOWER_ORDER, TOWERS
 from data.waves import NEW_ENEMY_WAVES, SPECIAL_BONUS_MULT, SPECIAL_WAVES, WAVE_SCALING, WAVES
 from data.enemies import ENEMIES
 from data.effects import EFFECT_PARAMS
-from game import actives, bima, currency, diditcode, fadhli, mark, options as opts_mod, powers, savegame, web
+from game import actives, ayun, bima, currency, diditcode, fadhli, mark, options as opts_mod, powers, savegame, web
 from game.profile import Profile
 from game.effects import EFFECTS
 from game import gfx
@@ -124,6 +124,8 @@ class Game:
         self.sweeps: list = []          # Mark's running sweeps (see game/mark.py)
         self.zones: list = []           # Bima sphere trap zones
         self.craters: list = []         # Garp's hot craters (see game/fadhli.py)
+        self.puddles: list = []         # A'yun's burning dragon-sauce puddles (see game/ayun.py)
+        self.ayun_prompt: dict | None = None   # A'yun's replace-or-sell pop-up for a freshly rolled item (stock full)
         self.shield, self.shield_t = 0.0, 0.0   # base shield (Bima sphere)
         self.hitstop, self.last_hitstop = 0.0, -9.0
         self.aiming = None              # (tower, ability id) while waiting for a map click
@@ -365,7 +367,7 @@ class Game:
             self._start_battle()
         elif key == pygame.K_f:
             self._toggle_speed()
-        elif key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5):
+        elif key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6):
             self._choose_shop(TOWER_ORDER[key - pygame.K_1])
         elif key in (pygame.K_e, pygame.K_c, pygame.K_v) and self.selected:
             self.use_ability((pygame.K_e, pygame.K_c, pygame.K_v).index(key))
@@ -487,6 +489,16 @@ class Game:
             powers.use(self, action[1])
         elif name == "activity" and self.selected:
             self._toggle_activity(action[1])
+        elif name == "ayun_roll" and self.selected is not None and self.selected.kind == "ayun":
+            self.fx.click()
+            ayun.roll(self, self.selected)
+        elif name == "ayun_auto" and self.selected is not None and self.selected.kind == "ayun":
+            ayun.toggle_auto(self, self.selected)
+        elif name == "ayun_sell" and self.selected is not None and self.selected.kind == "ayun":
+            ayun.sell_item(self, self.selected, action[1])
+        elif name == "ayun_prompt":
+            self.fx.click()
+            ayun.resolve_prompt(self, action[1], action[2] if len(action) > 2 else None)
         elif name == "upgrade" and self.selected:
             self._try_upgrade(action[1])
         elif name == "sell" and self.selected:
@@ -668,6 +680,7 @@ class Game:
             hits = armor_hits or (EFFECT_PARAMS["armor_breaker"]["hits"] if source is not None and "armor_breaker" in source.effects else 1)
             self.fx.armor_hit(enemy, enemy.break_armor(hits), hits)
             return
+        enemy.killer = source   # whoever hits last gets the kill (A'yun sells the Didits she kills)
         enemy.take_damage(damage * self.damage_multiplier(enemy))
         if quiet:   # damage over time (crater burn): a small flame, no hit sound / comic words every tick
             self.fx.burn(enemy)
@@ -710,6 +723,7 @@ class Game:
         bima.update_world(self, dt)
         mark.update_world(self, dt)
         fadhli.update_world(self, dt)
+        ayun.update_world(self, dt)
         if self.phase == Phase.PREP:
             self.prep_time += dt
             self._tick_activities(dt)
@@ -796,7 +810,9 @@ class Game:
             return
         self.fx.projectile_hit(p, victims)
         for e in victims:
-            self.hit_enemy(e, p.damage * fadhli.boss_mult(p, e), p.slow, p.slow_duration, p.color, p.source)
+            e.item_hit = p.item   # which A'yun item (if any) hit it last: Golden Register kills pay double
+            self.hit_enemy(e, p.damage * fadhli.boss_mult(p, e), p.slow, p.slow_duration, p.color, p.source,
+                           armor_hits=p.armor_hits)
         if p.aoe_radius > 0:
             self.fx.aoe(p.pos, p.aoe_radius, p.color)
         self.add_money(p.money_on_hit)
@@ -805,6 +821,8 @@ class Game:
                 fn = EFFECTS.get(name)
                 if fn is not None:
                     fn(p.source, self, "hit", proj=p, victims=victims)
+        if p.item:   # A'yun gacha item specials (Price Tag mark, Dragon Sauce puddle)
+            ayun.on_item_hit(self, p, victims)
 
     def _collect_enemies(self) -> None:
         """Pay bounties for dead enemies, apply stash damage for leakers."""
@@ -825,6 +843,7 @@ class Game:
                         born.append(child)
                 if e.gives_money:
                     self.add_money(e.bounty)
+                    self._sell_kill(e)
                 if e.is_boss:
                     self.add_money(sum(self.effect_values("boss_kill")))
             elif e.reached_end:
@@ -847,6 +866,15 @@ class Game:
             self.state = State.LOST
             self.fx.lost()
             self._end_run(False)
+
+    def _sell_kill(self, e: Enemy) -> None:
+        """A'yun's passive: a Didit she killed is SOLD: extra money (see game/ayun.py sell_amount)."""
+        src = e.killer
+        if src is None or src.kind != "ayun" or src not in self.towers:
+            return
+        amount = ayun.sell_amount(src, e)
+        self.add_money(amount)
+        self.fx.ayun_sold_enemy(e, amount)
 
     def _finish_wave(self) -> None:
         self.waves.finish()
@@ -946,6 +974,7 @@ class Game:
         bima.draw_world(w, self)
         mark.draw_world(w, self)
         fadhli.draw_world(w, self)
+        ayun.draw_world(w, self)
         if self.selected is not None and self.selected.kind == "bima":
             bima.draw_preview(w, self.selected)
         self.fx.vfx.draw(w)

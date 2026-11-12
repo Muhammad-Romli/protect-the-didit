@@ -38,6 +38,8 @@ class Projectile:
         self.bounce_chance = 0.0        # chance that the ball goes on to another Didit after this hit
         self.hit_list: list = []        # Didits this ball already hit (bounce prefers new ones)
         self.melee = False
+        self.item: str | None = None    # A'yun gacha item id this projectile carries (game/ayun.py)
+        self.armor_hits: int | None = None   # >0 overrides how many armor hits one hit counts as (Frying Pan = 3)
 
     def update(self, dt: float) -> None:
         if self.target.alive:
@@ -52,6 +54,17 @@ class Projectile:
 
     def draw(self, surface: pygame.Surface) -> None:
         x, y = int(self.pos.x), int(self.pos.y)
+        if self.item:   # A'yun's thrown gacha item: its icon, tumbling
+            from game import ayun_art
+            ic = ayun_art.item_icon(self.item, 26)
+            d = self.dest - self.pos
+            ang = (pygame.time.get_ticks() / 1000 * 420) % 360
+            gfx.blit_shadow(surface, (x + 5, y + 14), 20, 8, 80)
+            halo = gfx.glow(18, self.color, 120)
+            surface.blit(halo, halo.get_rect(center=(x, y)), special_flags=pygame.BLEND_RGB_ADD)
+            img = pygame.transform.rotate(ic, ang)
+            surface.blit(img, img.get_rect(center=(x, y)))
+            return
         kind = self.source.kind if self.source is not None else None
         img = sprite(f"projectiles/{kind}", 16) if kind else None
         if img is not None:

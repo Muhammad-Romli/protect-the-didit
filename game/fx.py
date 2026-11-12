@@ -157,6 +157,9 @@ class FX:
             self.vfx.pop(pos, 20, (255, 170, 80), 0.12)
         elif kind == "fadhli":
             self._fadhli_hit(enemy, source)
+        elif kind == "ayun":
+            self.vfx.burst(pos, GOLD, 3, 100, 0.35, 3, 240)
+            self.vfx.pop(pos, 20, (255, 214, 120), 0.1)
 
     def muzzle(self, tower, tip) -> None:
         self.vfx.pop(tip, 22 + 3 * (tower.tiers[0] + tower.tiers[1]), tower.color, 0.1)
@@ -624,3 +627,56 @@ class FX:
     def lost(self) -> None:
         self.audio.play("lose")
         self.vfx.shake(8, 0.6)
+
+    # -------------------------------------------------------------------- A'yun
+    def ayun_roll(self, tower, item_id: str, auto: bool) -> None:
+        """A gacha roll: a shower of sparkles in the rarity colour; rare and legendary get a louder reveal."""
+        from data.ayun import ITEMS, RARITY_COLOR, RARITY_LABEL
+        c = ITEMS[item_id]
+        col = RARITY_COLOR[c["rarity"]]
+        pos = tower.pos + pygame.Vector2(0, -34)
+        self.audio.play("gacha_rare" if c["rarity"] in ("rare", "legendary") else "gacha_roll")
+        self.vfx.sparkle(tower.pos, col, 10 + 8 * ("junk", "common", "rare", "legendary").index(c["rarity"]))
+        self.vfx.ring(tower.pos, 8, 46, 0.35, col, 3)
+        self.vfx.text(pos + pygame.Vector2(0, -22), ("AUTO: " if auto else "") + c["name"], col, 22, 1.4, 34)
+        if c["rarity"] == "legendary":
+            self.vfx.comic(tower.pos + pygame.Vector2(0, -60), "LEGENDARY!", col, 40, 1.2)
+            self.vfx.flash(col, 50, 0.25)
+            self.vfx.shake(3, 0.2)
+        elif c["rarity"] == "rare":
+            self.vfx.comic(tower.pos + pygame.Vector2(0, -60), "RARE!", col, 30, 0.9)
+
+    def ayun_prompt(self, tower) -> None:
+        self.audio.play("tick")
+        self.vfx.text(tower.pos + pygame.Vector2(0, -50), "Stock full!", (255, 214, 70), 22, 1.2, 24)
+
+    def ayun_replaced(self, tower, old_id: str, new_id: str) -> None:
+        self.audio.play("place")
+        self.vfx.burst(tower.pos + pygame.Vector2(0, -30), (180, 180, 190), 10, 90, 0.4, 3, 120)
+
+    def ayun_item_sold(self, tower, item_id: str, value: int) -> None:
+        self.audio.play("sell")
+        self.vfx.burst(tower.pos + pygame.Vector2(0, -30), GOLD, 8, 110, 0.45, 3, 220)
+        self.vfx.text(tower.pos + pygame.Vector2(0, -44), f"+${value}", GOLD, 22, 0.9, 30)
+
+    def ayun_expired(self, tower, item_id: str) -> None:
+        from data.ayun import ITEMS
+        self.vfx.burst(tower.pos + pygame.Vector2(0, -50), (170, 170, 180), 8, 70, 0.5, 3, -30)
+        self.vfx.text(tower.pos + pygame.Vector2(0, -56), f"{ITEMS[item_id]['name']} expired", (200, 200, 210), 18, 1.1, 22)
+
+    def ayun_throw(self, tower, item_id: str) -> None:
+        self.audio.play("shoot_ayun")
+        self.vfx.ring(tower.pos, 8, 22, 0.12, (255, 255, 255), 2)
+
+    def ayun_mark(self, enemy) -> None:
+        self.vfx.text(enemy.pos + pygame.Vector2(0, -26), "$ +25%", (112, 178, 255), 18, 0.8, 20)
+
+    def ayun_puddle(self, pos) -> None:
+        self.vfx.burst(pos, (255, 120, 40), 12, 130, 0.5, 4, 80)
+        self.vfx.ring(pos, 8, 52, 0.3, (255, 150, 60), 3)
+
+    def ayun_sold_enemy(self, enemy, amount: int) -> None:
+        """Passive: she sells the Didit she just killed (a small gold number, no extra sound spam)."""
+        self.audio.play("coin")
+        self.vfx.text(enemy.pos + pygame.Vector2(0, -22), f"SOLD +${amount}", GOLD, 18, 0.8, 26)
+        self.vfx.burst(enemy.pos, GOLD, 3, 90, 0.4, 3, 240)

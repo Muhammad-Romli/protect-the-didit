@@ -60,6 +60,8 @@ class Enemy:
         self.facing_left = False  # visual: sprites flip when walking left
         self.anim_offset = random.uniform(0, 8)
         self.reached_end = False
+        self.killer = None     # tower whose damage hit it last (A'yun sells the Didits she kills, see game/ayun.py)
+        self.item_hit = None   # id of the A'yun gacha item that hit it last (None = something else)
 
     @property
     def armor_stage(self) -> int:

@@ -129,7 +129,7 @@ un = menu.UnitsScreen()
 for i, (k, rect) in enumerate(un.tabs):
     assert un.click(rect.center) is None and un.kind == k
     un.draw(screen, 0.5, (0, 0))
-    for (path, tier), card in un.cards.items():
+    for (path, tier), card in un._live_cards().items():
         un.draw(screen, 0.5, card.center)             # hover preview of every tier's costume
         un.click(card.center); assert un.sel == (path, tier + 1)
         un.click(card.center); assert un.sel is None

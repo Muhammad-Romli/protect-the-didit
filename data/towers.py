@@ -19,7 +19,7 @@ DEFAULT_STATS = {
 from data.mark import TIER_STATS as MARK_STATS
 from data.fadhli import FADHLI_BASE_DAMAGE, GARP_STATS, JOHNNY_STATS
 
-TOWER_ORDER = ["jalu", "romli", "zizi", "bima", "fadhli"]
+TOWER_ORDER = ["jalu", "romli", "zizi", "bima", "fadhli", "ayun"]
 
 
 def _up(name, cost, description, stat_mods=None, effects=None, voice_line=None):
@@ -83,6 +83,27 @@ TOWERS = {
                 _up("Tusk Act 4", 1200, "Barrage melee (inner circle) AND throws at once. Active: Golden Ratio (5s, throws faster, damage /4 then x1.618 per throw).",
                     JOHNNY_STATS[3], ["fadhli_barrage", "golden_active"]),
             ]},
+        ],
+    },
+    # ------------------------------------------------------------------ A'yun
+    # The shopkeeper. NO upgrade paths yet (to be discussed): path A is her single linear track of 4 upgrades and path B is
+    # an empty placeholder (Tower.can_upgrade refuses it, the UI hides it). Numbers: data/ayun.py, logic: game/ayun.py.
+    # Prices are deliberately higher than the other towers' early tiers (2026-11-11 feedback).
+    "ayun": {
+        "name": "A'yun", "color": (176, 70, 100), "cost": 350,
+        "stats": {"damage": 1.5, "cooldown": 1.4, "range": 135, "proj_speed": 380},
+        "paths": [
+            {"name": "Shop upgrades", "tiers": [
+                _up("Gacha Stall", 180, "ROLL items with coins; each item is an attack. Holds 2.",
+                    {"range": 10}, ["ayun_roll"]),
+                _up("Display Shelf", 400, "Holds 4 items. Better odds, cheaper rolls.",
+                    {"damage": 0.5}, ["ayun_shelf"]),
+                _up("Loyalty Card", 700, "Legendary items, pity, better prices for kills.",
+                    {"damage": 0.5, "range": 10}, ["ayun_pity"]),
+                _up("Supply Chain", 1500, "Auto-roll every 15s. Steady Supply raises its odds.",
+                    {"damage": 0.5, "cooldown": -0.2}, ["ayun_auto"]),
+            ]},
+            {"name": "Paths come later", "tiers": []},
         ],
     },
     # ------------------------------------------------------------------ Jalu

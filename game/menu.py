@@ -208,14 +208,14 @@ class UnitsScreen:
     (name, price, description). Hover or click a tier to see the portrait wear that tier's costume.
     click() returns 'back' or None."""
 
-    TAB_W, TAB_H = 232, 98
+    TAB_W, TAB_H = 232, 80
     CARD_W, CARD_H = 313, 114
 
     def __init__(self) -> None:
         self.idx = 0
         self.sel: tuple[int, int] | None = None   # (path, tier) chosen by a click; None = base look
         self.back = pygame.Rect(30, 646, 200, 58)
-        self.tabs = [(k, pygame.Rect(30, 104 + i * (self.TAB_H + 8), self.TAB_W, self.TAB_H)) for i, k in enumerate(TOWER_ORDER)]
+        self.tabs = [(k, pygame.Rect(30, 104 + i * (self.TAB_H + 6), self.TAB_W, self.TAB_H)) for i, k in enumerate(TOWER_ORDER)]
         self.char_panel = pygame.Rect(278, 104, 322, 540)
         self.cards = {(p, i): pygame.Rect(616 + p * (self.CARD_W + 12), 156 + i * (self.CARD_H + 6), self.CARD_W, self.CARD_H)
                       for p in (0, 1) for i in range(4)}
@@ -231,14 +231,19 @@ class UnitsScreen:
             if rect.collidepoint(pos):
                 self.idx, self.sel = i, None
                 return None
-        for key, rect in self.cards.items():
+        for key, rect in self._live_cards().items():
             if rect.collidepoint(pos):
                 self.sel = None if self.sel == (key[0], key[1] + 1) else (key[0], key[1] + 1)
                 return None
         return None
 
+    def _live_cards(self) -> dict:
+        """Cards that exist for the shown character (A'yun has one track: her path B has no upgrades)."""
+        paths = TOWERS[self.kind]["paths"]
+        return {k: r for k, r in self.cards.items() if k[1] < len(paths[k[0]]["tiers"])}
+
     def _look(self, mouse) -> tuple[int, int] | None:
-        for (p, i), rect in self.cards.items():
+        for (p, i), rect in self._live_cards().items():
             if rect.collidepoint(mouse):
                 return (p, i + 1)
         return self.sel
@@ -253,7 +258,7 @@ class UnitsScreen:
             screen.blit(gfx.glossy(rect.w, rect.h, COLORS["btn_blue"] if on else (84, 92, 120), 14, WHITE if on else (190, 196, 214),
                                    "pressed" if on else "hover" if hov else "normal"), (rect.x - 1, rect.y - 1))
             spr = sprites_proc.tower_sprite(k, 14, TOWERS[k]["color"])
-            sc = pygame.transform.smoothscale(spr, (round(spr.get_width() * 66 / spr.get_height()), 66))
+            sc = pygame.transform.smoothscale(spr, (round(spr.get_width() * 58 / spr.get_height()), 58))
             screen.blit(sc, sc.get_rect(midleft=(rect.x + 14, rect.centery)))
             draw_outlined(screen, TOWERS[k]["name"], (rect.x + 88, rect.centery - 14), 32, WHITE, anchor="midleft", width=3)
             draw_outlined(screen, UNITS_INFO[k]["role"], (rect.x + 88, rect.centery + 16), 15, (225, 235, 255), anchor="midleft", width=1)

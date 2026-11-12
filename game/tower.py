@@ -13,7 +13,7 @@ from data.towers import DEFAULT_STATS, TOWERS
 from game.effects import EFFECTS
 from game.enemy import Enemy
 from game.projectile import Projectile
-from game import bima, fadhli, gfx, mark, models, sprites_proc
+from game import ayun, bima, fadhli, gfx, mark, models, sprites_proc
 from game.assets import sprite
 from game.utils import Vec, draw_outlined
 
@@ -55,6 +55,8 @@ class Tower:
             mark.init_tower(self)
         elif kind == "fadhli":
             fadhli.init_tower(self)
+        elif kind == "ayun":
+            ayun.init_tower(self)
 
     # ---------------------------------------------------------------- stats
     def recompute_stats(self) -> None:
@@ -117,6 +119,8 @@ class Tower:
     def can_upgrade(self, path: int) -> tuple[bool, str]:
         """Rule: max(a, b) <= 4 and min(a, b) <= 1 (Jalu: one path only, Bima: one path only).
         Returns (ok, reason_if_blocked)."""
+        if not self.data["paths"][path]["tiers"]:   # A'yun: one track only, the second path does not exist yet
+            return False, "No second path"
         if self.tiers[path] >= MAX_TIER:
             return False, "Max tier"
         if self.is_path_locked(path):
@@ -189,6 +193,8 @@ class Tower:
             rate += self.haste[1]
         if self.kind == "bima" and self.buff_timer > 0:
             rate += 0.6
+        if self.kind == "ayun":  # her stored items throw themselves on their own cooldowns (the plain throw below goes on)
+            ayun.tick_tower(self, game, dt, rate)
         if self.kind == "fadhli":  # charge -> throw -> cooldown, barrage, ability timers (game/fadhli.py)
             fadhli.tick_tower(self, game, dt, rate)
             return
@@ -276,6 +282,8 @@ class Tower:
         if self.kind == "fadhli":
             fadhli.draw_charge(surface, self, x, y)
             fadhli.draw_barrage(surface, self, x, y)
+        elif self.kind == "ayun":
+            ayun.draw_tower(surface, self, x, y)
         self._draw_tier_badge(surface, x, y)
 
     def _draw_wand(self, surface: pygame.Surface, x: int, y: int, recoil: float) -> None:

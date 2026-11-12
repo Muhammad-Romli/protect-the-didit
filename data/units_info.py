@@ -24,4 +24,8 @@ Ability DiditCode (preparation): fix a code bug for money.",
                         "hot craters that burn Didits (from tier 2), 300% damage to bosses from tier 3, armor break and knockback. Johnny: steel balls that bounce, spin Didits in a tornado and "
                         "call Tusk.",
                "rule": "Each Fadhli follows ONE path (no cross-pathing)."},
+    "ayun": {"role": "Shopkeeper",
+             "blurb": "Sells every Didit she kills for extra money. Upgrade 1 opens her gacha: roll items with coins, and every item "
+                      "is an attack with its own cooldown (they expire, or sell them cheap). Supply Chain auto-rolls.",
+             "rule": "One track of 4 upgrades. Paths come later."},
 }

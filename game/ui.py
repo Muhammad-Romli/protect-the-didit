@@ -24,7 +24,8 @@ from data.shop import ITEM_ORDER, ITEMS
 from data.touch import TOUCH_GEAR, TOUCH_SLOP
 from data.towers import DEFAULT_STATS, TOWER_ORDER, TOWERS
 from data.waves import SPECIAL_WAVES, WAVES
-from game import gfx, options as opts_mod, powers, shop_icons, sprites_proc
+from data import ayun as ayun_cfg
+from game import ayun, ayun_art, gfx, options as opts_mod, powers, shop_icons, sprites_proc
 from data.settings import DIDITCODE_MAX_PER_PREP
 from game.actives import ACTIVES, actives_of, phase_ok as actives_phase_ok
 from game.bima_ui import GraphConsole
@@ -52,7 +53,7 @@ class UI:
         self.upgrades_btn = pygame.Rect(18, 640, 214, 44)
         self.slot = pygame.Rect(18, 690, 214, 22)
         n = len(TOWER_ORDER)
-        cw, gap = (CARD_W, 14) if n <= 4 else (78, 9)   # 5+ towers: narrower cards so the bar clears the abilities and POWERS
+        cw, gap = (CARD_W, 14) if n <= 4 else (78, 9) if n == 5 else (64, 7)   # 5+ towers: narrower cards so the bar clears the abilities and POWERS
         x0 = 640 - (n * cw + (n - 1) * gap) // 2 if n <= 4 else 432
         self.shop_btns = {k: pygame.Rect(x0 + i * (cw + gap), 641, cw, CARD_H)
                           for i, k in enumerate(TOWER_ORDER)}
@@ -71,6 +72,14 @@ class UI:
         self.sell_btn = pygame.Rect(0, 0, 0, 0)
         self._act_rects: list[tuple[str, pygame.Rect]] = []
         self.target_rects = (pygame.Rect(0, 0, 0, 0), pygame.Rect(0, 0, 0, 0))  # prev / next priority
+        # A'yun's gacha block in the tower panel + her replace-or-sell pop-up (rebuilt by layout())
+        self.ayun_block = pygame.Rect(0, 0, 0, 0)
+        self.ayun_roll_btn = pygame.Rect(0, 0, 0, 0)
+        self.ayun_auto_btn = pygame.Rect(0, 0, 0, 0)
+        self.ayun_info_y = 0
+        self.ayun_slots: list[tuple[pygame.Rect, pygame.Rect]] = []   # (row, sell button)
+        self.prompt_panel = pygame.Rect(0, 0, 0, 0)
+        self.prompt_rects: list[tuple[tuple, pygame.Rect]] = []
         self.opt_panel = pygame.Rect(380, 70, 520, 556)
         self.opt_rows: list[tuple[str, pygame.Rect]] = []
         self.panel_open = False      # target of the slide animation (tower selected and not collapsed)
@@ -146,10 +155,17 @@ class UI:
                 if self.slide > 0.5:
                     self.slide = 0.35  # switching towers: quick re-slide
         self.panel_open = t is not None and not self.collapsed
+        self._layout_prompt(game)
+        self.ayun_block = self.ayun_roll_btn = self.ayun_auto_btn = pygame.Rect(0, 0, 0, 0)
+        self.ayun_slots = []
         if t is None:
             return
         acts = activities_for(t.kind)
-        h = 18 + 52 + 6 + 36 + 4 + 34 + 8 + (54 if acts else 0) + 2 * CARD_UP_H + 8 + 10 + 38 + 18
+        is_ayun = t.kind == "ayun"
+        blk = 0
+        if is_ayun:   # gacha block: ROLL (+ AUTO) row, 2 info lines, one row per stock slot
+            blk = 56 if not ayun.unlocked(t) else 38 + 4 + 30 + 4 + 28 * max(2, ayun.stock_cap(t)) + 6
+        h = 18 + 52 + 6 + 36 + 4 + 34 + 8 + (54 if acts else 0) + (blk + CARD_UP_H if is_ayun else 2 * CARD_UP_H) + 8 + 10 + 38 + 18
         ease = 1 - (1 - self.slide) ** 3
         home = 14 if self.panel_side == "left" else 1280 - PANEL_W - 14
         off = -(PANEL_W + 40) if self.panel_side == "left" else (PANEL_W + 40)
@@ -164,8 +180,42 @@ class UI:
             aw = (w - gap * (len(acts) - 1)) // len(acts)
             self._act_rects = [(a, pygame.Rect(x + i * (aw + gap), y, aw, 46)) for i, (a, _) in enumerate(acts)]
             y += 54
+        if is_ayun:
+            self.ayun_block = pygame.Rect(x - 6, y, w + 12, blk)
+            if ayun.unlocked(t):
+                if ayun.has_auto(t):
+                    rw = round(w * 0.56)
+                    self.ayun_roll_btn = pygame.Rect(x, y, rw, 38)
+                    self.ayun_auto_btn = pygame.Rect(x + rw + 6, y, w - rw - 6, 38)
+                else:
+                    self.ayun_roll_btn = pygame.Rect(x, y, w, 38)
+                self.ayun_info_y = y + 42
+                sy = y + 38 + 4 + 30 + 4
+                for i in range(max(2, ayun.stock_cap(t))):
+                    row = pygame.Rect(x, sy + i * 28, w, 26)
+                    self.ayun_slots.append((row, pygame.Rect(row.right - 54, row.y + 2, 52, 22)))
+            y += blk
+            self.upgrade_btns = [pygame.Rect(x, y, w, CARD_UP_H), pygame.Rect(0, 0, 0, 0)]
+            self.sell_btn = pygame.Rect(x, y + CARD_UP_H + 18, w, 38)
+            return
         self.upgrade_btns = [pygame.Rect(x, y, w, CARD_UP_H), pygame.Rect(x, y + CARD_UP_H + 8, w, CARD_UP_H)]
         self.sell_btn = pygame.Rect(x, y + 2 * CARD_UP_H + 18, w, 38)
+
+    def _layout_prompt(self, game: "Game") -> None:
+        """A'yun's replace-or-sell pop-up: one REPLACE button per stored item and one SELL button for the new item."""
+        self.prompt_rects = []
+        p = game.ayun_prompt
+        if p is None:
+            self.prompt_panel = pygame.Rect(0, 0, 0, 0)
+            return
+        n = len(p["tower"].stock)
+        self.prompt_panel = pygame.Rect(0, 0, 520, 232)
+        self.prompt_panel.midtop = (640, 142)
+        pp = self.prompt_panel
+        bw = (pp.w - 40 - 8 * (n - 1)) // max(1, n)
+        for i in range(n):
+            self.prompt_rects.append((("ayun_prompt", "replace", i), pygame.Rect(pp.x + 20 + i * (bw + 8), pp.y + 96, bw, 62)))
+        self.prompt_rects.append((("ayun_prompt", "sell"), pygame.Rect(pp.x + 20, pp.y + 168, pp.w - 40, 40)))
 
     def _build_options_layout(self) -> None:
         p = self.opt_panel
@@ -196,6 +246,12 @@ class UI:
                         return ("opt", key, 0)
                     return ("opt", key, -1 if pos[0] < rect.centerx - 10 and key != "auto_start" else 1)
             return ("noop",)
+        if game.ayun_prompt is not None:   # A'yun: replace-or-sell (the game keeps running behind it)
+            for act, rect in self.prompt_rects:
+                if rect.collidepoint(pos):
+                    return act
+            if self.prompt_panel.collidepoint(pos):
+                return ("noop",)
         g = self.graph.hit_test(pos, game)
         if g is not None:
             return g
@@ -227,6 +283,14 @@ class UI:
             for act_id, rect in self._act_rects:
                 if self._hit(rect, pos, 5):
                     return ("activity", act_id)
+            if game.selected.kind == "ayun" and ayun.unlocked(game.selected):
+                if self._hit(self.ayun_roll_btn, pos):
+                    return ("ayun_roll",)
+                if ayun.has_auto(game.selected) and self._hit(self.ayun_auto_btn, pos):
+                    return ("ayun_auto",)
+                for i, (_row, sell) in enumerate(self.ayun_slots[:len(game.selected.stock)]):
+                    if self._hit(sell, pos, 3):
+                        return ("ayun_sell", i)
             for i, rect in enumerate(self.upgrade_btns):
                 if rect.collidepoint(pos):
                     return ("upgrade", i)
@@ -251,6 +315,8 @@ class UI:
         if game.powers_open and not self.graph.visible(game):
             self._draw_powers(surface, game)
         self._draw_tooltip(surface, game)
+        if game.ayun_prompt is not None:
+            self._draw_ayun_prompt(surface, game)
         if game.options_open:
             self._draw_options(surface, game)
 
@@ -498,7 +564,7 @@ class UI:
         if not text and game.selected is None and self.touch:
             text, dim = "Tap a card, then the map, to build.  Tap a tower to upgrade it.", True
         if not text and game.selected is None:
-            text, dim = "1-3 place   Space start   P pause   F speed   Q/W upgrade   X sell   M mute   F11 fullscreen", True
+            text, dim = "1-6 place   Space start   P pause   F speed   Q/W upgrade   X sell   M mute   F11 fullscreen", True
         if not text:
             return
         img = outlined_text(text, 20 if dim else 24, COLORS["text_dim"] if dim else GOLD, COLORS["ink"], 2)
@@ -558,18 +624,110 @@ class UI:
         x = p.x + 20
         surface.blit(self._portrait(t.kind, t.color), (x - 4, p.y + 18))
         draw_outlined(surface, t.name, (x + 50, p.y + 22), 32, (255, 255, 255), width=3)
-        draw_outlined(surface, f"Path A tier {t.tiers[0]}   Path B tier {t.tiers[1]}", (x + 50, p.y + 54), 16,
+        draw_outlined(surface, f"Upgrade {t.tiers[0]}/{MAX_TIER}   (no paths yet)" if t.kind == "ayun"
+                      else f"Path A tier {t.tiers[0]}   Path B tier {t.tiers[1]}", (x + 50, p.y + 54), 16,
                       COLORS["text_dim"], width=1)
         for i, line in enumerate(wrap_text(self._stats_text(t), 16, PANEL_W - 40)[:2]):
             draw_outlined(surface, line, (x, p.y + 18 + 52 + 6 + i * 17), 16, (225, 235, 255), width=1)
         self._draw_target_row(surface, game)
         self._draw_activity_buttons(surface, game)
+        if t.kind == "ayun":
+            self._draw_ayun_block(surface, game)
         for i, rect in enumerate(self.upgrade_btns):
+            if t.kind == "ayun" and i == 1:
+                continue   # A'yun has one upgrade track only
             self._draw_upgrade_card(surface, game, i, rect)
         confirming = game.sell_pending is t and game.sell_timer > 0
         self._btn(surface, self.sell_btn, COLORS["btn_red"], game, pressed=confirming)
         draw_outlined(surface, f"SURE?  +${t.sell_value}" if confirming else f"SELL  +${t.sell_value}",
                       self.sell_btn.center, 24, center=True)
+
+    def _draw_ayun_block(self, surface, game: "Game") -> None:
+        """A'yun's gacha: ROLL (+ AUTO), the odds, and one row per stored item (icon, name, damage / cooldown, life bar, SELL)."""
+        t = game.selected
+        b = self.ayun_block
+        pygame.draw.rect(surface, (18, 26, 56), b, border_radius=10)
+        if not ayun.unlocked(t):
+            draw_outlined(surface, "Upgrade 1 opens the gacha:", (b.centerx, b.y + 18), 17, COLORS["text_dim"], center=True, width=1)
+            draw_outlined(surface, "roll items, each one an attack", (b.centerx, b.y + 38), 17, COLORS["text_dim"], center=True, width=1)
+            return
+        cost = ayun.roll_cost(t)
+        can_roll = game.money >= cost and game.ayun_prompt is None
+        r = self.ayun_roll_btn
+        self._btn(surface, r, (176, 70, 100), game, can_roll, 10)
+        surface.blit(gfx.icon("coin", 24), (r.x + 8, r.y + 7))
+        draw_outlined(surface, f"ROLL  ${cost}", (r.x + 38, r.centery), 21, (255, 255, 255) if can_roll else COLORS["bad"],
+                      anchor="midleft", width=2)
+        draw_outlined(surface, "E", (r.right - 12, r.centery), 15, (255, 235, 240), center=True, width=1)
+        if ayun.has_auto(t):
+            a = self.ayun_auto_btn
+            self._btn(surface, a, (60, 160, 200), game, True, 10, pressed=t.auto_on)
+            draw_outlined(surface, "AUTO ON" if t.auto_on else "AUTO", (a.centerx, a.centery - 6), 19, (255, 255, 255), center=True, width=2)
+            draw_outlined(surface, f"${ayun_cfg.AUTO_COST_PER_MINUTE}/min [C]", (a.centerx, a.centery + 11), 13, (225, 240, 255), center=True, width=1)
+        iy = self.ayun_info_y
+        draw_outlined(surface, "Odds " + ayun.odds_text(t), (b.x + 10, iy + 7), 14, (225, 235, 255), anchor="midleft", width=1)
+        left = ayun.pity_left(t)
+        if ayun.has_auto(t):
+            draw_outlined(surface, f"Auto {ayun.odds_text(t, True)}", (b.x + 10, iy + 23), 14, (150, 225, 255), anchor="midleft", width=1)
+        elif left is not None:
+            draw_outlined(surface, f"Pity: a Rare within {left} roll{'s' if left != 1 else ''}", (b.x + 10, iy + 23), 14, GOLD,
+                          anchor="midleft", width=1)
+        else:
+            draw_outlined(surface, f"Stock {len(t.stock)}/{ayun.stock_cap(t)}", (b.x + 10, iy + 23), 14, COLORS["text_dim"],
+                          anchor="midleft", width=1)
+        cap = ayun.stock_cap(t)
+        for i, (row, sell) in enumerate(self.ayun_slots):
+            pygame.draw.rect(surface, (30, 38, 74), row, border_radius=7)
+            if i >= cap:
+                pygame.draw.rect(surface, (255, 255, 255, 30), row, 1, border_radius=7)
+                draw_outlined(surface, "locked (Display Shelf)", row.center, 13, (110, 114, 128), center=True, width=1)
+                continue
+            if i >= len(t.stock):
+                pygame.draw.rect(surface, (70, 80, 120), row, 1, border_radius=7)
+                draw_outlined(surface, "empty", row.center, 14, (110, 120, 150), center=True, width=1)
+                continue
+            it = t.stock[i]
+            c = ayun_cfg.ITEMS[it["id"]]
+            col = ayun_cfg.RARITY_COLOR[c["rarity"]]
+            pygame.draw.rect(surface, col, row, 2, border_radius=7)
+            surface.blit(ayun_art.item_icon(it["id"], 22), (row.x + 4, row.y + 2))
+            draw_outlined(surface, c["name"], (row.x + 30, row.y + 8), 14, col, anchor="midleft", width=1)
+            dmg = f"{c['dmg']:g} dmg / {c['cd']:g}s" + (f"  AoE {c['aoe']}" if c["aoe"] else "")
+            draw_outlined(surface, dmg, (row.x + 30, row.y + 19), 11, (210, 220, 245), anchor="midleft", width=1)
+            frac = max(0.0, min(1.0, it["life"] / ayun_cfg.LIFETIME[c["rarity"]]))
+            pygame.draw.rect(surface, (20, 14, 30), (row.x + 4, row.bottom - 3, row.w - 8, 2))
+            pygame.draw.rect(surface, (255, 120, 90) if frac < 0.25 else (120, 230, 130), (row.x + 4, row.bottom - 3, max(1, int((row.w - 8) * frac)), 2))
+            self._btn(surface, sell, COLORS["btn_green"], game, True, 6)
+            draw_outlined(surface, f"${ayun.sell_value(it['id'])}", sell.center, 15, (255, 255, 255), center=True, width=1)
+
+    def _draw_ayun_prompt(self, surface, game: "Game") -> None:
+        """Replace-or-sell pop-up for a freshly rolled item when the stock is full (idle = the new item gets sold)."""
+        p = game.ayun_prompt
+        pp = self.prompt_panel
+        surface.blit(gfx.panel_surface(pp.w, pp.h), (pp.x - 2, pp.y - 2))
+        item = p["item"]
+        c = ayun_cfg.ITEMS[item["id"]]
+        col = ayun_cfg.RARITY_COLOR[c["rarity"]]
+        surface.blit(ayun_art.item_icon(item["id"], 52), (pp.x + 20, pp.y + 18))
+        draw_outlined(surface, f"NEW: {c['name']}", (pp.x + 84, pp.y + 28), 26, col, anchor="midleft", width=3)
+        dmg = f"{ayun_cfg.RARITY_LABEL[c['rarity']]}  -  {c['dmg']:g} dmg every {c['cd']:g}s.  {c['desc']}"
+        for i, line in enumerate(wrap_text(dmg, 15, pp.w - 104)[:2]):
+            draw_outlined(surface, line, (pp.x + 84, pp.y + 54 + i * 17), 15, (225, 235, 255), anchor="midleft", width=1)
+        draw_outlined(surface, "Stock is full: REPLACE one item, or SELL the new one", (pp.centerx, pp.y + 86), 16, GOLD, center=True, width=1)
+        for act, rect in self.prompt_rects:
+            if act[1] == "replace":
+                old = p["tower"].stock[act[2]]
+                oc = ayun_cfg.ITEMS[old["id"]]
+                self._btn(surface, rect, (96, 120, 190), game, True, 10)
+                surface.blit(ayun_art.item_icon(old["id"], 28), ayun_art.item_icon(old["id"], 28).get_rect(center=(rect.centerx, rect.y + 20)))
+                draw_outlined(surface, "Replace", (rect.centerx, rect.y + 42), 14, (255, 255, 255), center=True, width=1)
+                draw_outlined(surface, oc["name"], (rect.centerx, rect.y + 54), 11, ayun_cfg.RARITY_COLOR[oc["rarity"]], center=True, width=1)
+            else:
+                self._btn(surface, rect, COLORS["btn_green"], game, True, 10)
+                draw_outlined(surface, f"SELL the new item  +${ayun.sell_value(item['id'])}", rect.center, 22, (255, 255, 255), center=True, width=2)
+        frac = max(0.0, min(1.0, p["timer"] / ayun_cfg.PROMPT_SECONDS))
+        pygame.draw.rect(surface, (30, 20, 12), (pp.x + 20, pp.bottom - 14, pp.w - 40, 6), border_radius=3)
+        pygame.draw.rect(surface, (255, 214, 70), (pp.x + 21, pp.bottom - 13, max(2, int((pp.w - 42) * frac)), 4), border_radius=2)
 
     def _draw_target_row(self, surface, game: "Game") -> None:
         t = game.selected
@@ -681,7 +839,8 @@ class UI:
         pygame.draw.rect(plate, (130, 240, 110, 190) if buyable else (255, 255, 255, 60), (0, 0, rect.w, rect.h), 2, border_radius=12)
         surface.blit(plate, rect.topleft)
         x, y = rect.x + 12, rect.y + 8
-        draw_outlined(surface, f"{'AB'[path]}  {t.data['paths'][path]['name']}", (x, y), 18, (255, 255, 255), width=2)
+        draw_outlined(surface, t.data['paths'][path]['name'] if t.kind == "ayun" else f"{'AB'[path]}  {t.data['paths'][path]['name']}",
+                      (x, y), 18, (255, 255, 255), width=2)
         for i in range(MAX_TIER):  # tier pips
             c = (rect.right - 18 - (MAX_TIER - 1 - i) * 16, y + 11)
             pygame.draw.circle(surface, (20, 14, 30), c, 7)

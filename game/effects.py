@@ -189,7 +189,7 @@ EFFECTS: dict[str, Callable] = {
     **{n: _marker for n in ("graph_axis", "graph_patterns", "graph_advanced", "geo_shapes", "geo_3d",
                             "loom_reset_active", "nap_time_active", "mark_melee", "mark_rage", "sweep_active",
                             "cube_active", "pyramid_active", "sphere_active", "galaxy_active", "golden_active",
-                            "fadhli_barrage")},
+                            "fadhli_barrage", "ayun_roll", "ayun_shelf", "ayun_pity", "ayun_auto")},
     "fadhli_bounce": _fadhli_bounce,
     "fadhli_status": _fadhli_status,
     "garp_knockback": _garp_knockback,
